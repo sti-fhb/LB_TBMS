@@ -335,9 +335,10 @@ class GodexPrinter:
     @staticmethod
     def _load_dll() -> ctypes.WinDLL:
         dll_name = "EZio64.dll" if struct.calcsize("P") * 8 == 64 else "Ezio32.dll"
+        # C:\ezio 為 GoDEX DLL 固定安裝路徑（系統限制，不可更改磁碟機代號）
         search_paths = [
-            os.path.join(r"C:\ezio", dll_name),
             os.path.join(os.path.dirname(__file__), dll_name),
+            os.path.join(r"C:\ezio", dll_name),
         ]
         for p in search_paths:
             if os.path.exists(p):

@@ -3,6 +3,12 @@ PrinterSetting — 標籤印表機設定。
 
 由 Main Menu「設定→標籤印表機設定」開啟。
 對照 VB6 Frm_Set_Printer.frm，改用藍色色系。
+
+欄位模型對齊 spec.md LB_PRINTER Table 定義：
+  PRINTER_ID, PRINTER_NAME, SITE_ID, SERVER_IP,
+  PRINTER_IP, PRINTER_PORT, PRINTER_DRIVER,
+  SHIFT_LEFT, SHIFT_TOP, DARKNESS,
+  PRINTER_MODEL, IS_ACTIVE, NOTE
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ CLR_BTN_FG = "#FFFFFF"
 CLR_WARN = "#CC0000"
 
 # ── 印表機型號選項 ──
-PRINTER_TYPES = [
+PRINTER_MODELS = [
     "GoDEX EZ2250i（工業型）",
     "GoDEX EZ2350i（工業型）",
     "GoDEX EZ6250i（工業型）",
@@ -37,9 +43,6 @@ PRINTER_TYPES = [
     "GoDEX MX30（攜帶型）",
 ]
 
-# ── 連線方式選項 ──
-LINK_TYPES = ["TCP", "USB", "BT"]
-
 
 class PrinterSetting(tk.Toplevel):
     """標籤印表機設定視窗。"""
@@ -47,7 +50,7 @@ class PrinterSetting(tk.Toplevel):
     def __init__(self, master: tk.Tk) -> None:
         super().__init__(master)
         self.title("LBSB01-標籤印表機設定")
-        self.geometry("1050x680")
+        self.geometry("1100x680")
         self.resizable(True, True)
         self.configure(bg=CLR_BG)
 
@@ -80,17 +83,22 @@ class PrinterSetting(tk.Toplevel):
         tk.Label(hint_frame, text="建議值: 小型機 12~14，工業型 6~8",
                  fg=CLR_ACCENT, bg=CLR_BG, font=("新細明體", 9)).pack(anchor="e")
 
-        # ====== 印表機清單（Treeview 取代 MSFlexGrid）======
+        # ====== 印表機清單（Treeview）======
         grid_frame = tk.Frame(self, bg=CLR_BG)
         grid_frame.pack(fill="both", expand=True, padx=8, pady=4)
 
-        columns = ("printer_id", "printer_name", "link_type", "ip_address", "ip_port",
-                   "usb_port", "bt_name", "shift_left", "shift_top", "darkness",
-                   "printer_type", "is_active", "note")
-        col_names = ("印表機編號", "名稱", "連線", "IP 位址", "Port",
-                     "USB Port", "藍牙名稱", "左位移", "上位移", "明暗",
+        columns = ("printer_id", "printer_name", "site_id", "server_ip",
+                   "printer_ip", "printer_port", "printer_driver",
+                   "shift_left", "shift_top", "darkness",
+                   "printer_model", "is_active", "note")
+        col_names = ("印表機編號", "名稱", "站點", "Server IP",
+                     "印表機 IP", "Port", "Driver",
+                     "左位移", "上位移", "明暗",
                      "型號", "啟用", "說明")
-        col_widths = (90, 120, 50, 120, 50, 60, 100, 55, 55, 45, 150, 40, 150)
+        col_widths = (90, 120, 55, 120,
+                      120, 50, 130,
+                      55, 55, 45,
+                      150, 40, 150)
 
         self.tree = ttk.Treeview(grid_frame, columns=columns, show="headings",
                                  selectmode="browse", height=15)
@@ -119,7 +127,7 @@ class PrinterSetting(tk.Toplevel):
                                    fg=CLR_TITLE_FG, bg=CLR_BG, padx=10, pady=8)
         edit_frame.pack(fill="x", padx=8, pady=(0, 8))
 
-        # Row 0
+        # Row 0: 編號 / 名稱 / 型號
         r = 0
         tk.Label(edit_frame, text="印表機編號:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=0, sticky="e", padx=(0, 4))
@@ -136,50 +144,50 @@ class PrinterSetting(tk.Toplevel):
 
         tk.Label(edit_frame, text="型號:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=4, sticky="e", padx=(16, 4))
-        self.var_type = tk.StringVar()
-        cmb_type = ttk.Combobox(edit_frame, textvariable=self.var_type, width=25,
-                                font=("新細明體", 10), values=PRINTER_TYPES)
-        cmb_type.grid(row=r, column=5, sticky="w", pady=3)
+        self.var_model = tk.StringVar()
+        cmb_model = ttk.Combobox(edit_frame, textvariable=self.var_model, width=25,
+                                 font=("新細明體", 10), values=PRINTER_MODELS)
+        cmb_model.grid(row=r, column=5, sticky="w", pady=3)
 
-        # Row 1
+        # Row 1: 站點 / Server IP / 印表機 IP / Port
         r = 1
-        tk.Label(edit_frame, text="連線方式:", bg=CLR_BG, fg=CLR_TITLE_FG,
+        tk.Label(edit_frame, text="站點:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=0, sticky="e", padx=(0, 4))
-        self.var_link = tk.StringVar(value="TCP")
-        cmb_link = ttk.Combobox(edit_frame, textvariable=self.var_link, width=6,
-                                font=("新細明體", 11), values=LINK_TYPES, state="readonly")
-        cmb_link.grid(row=r, column=1, sticky="w", pady=3)
-        cmb_link.bind("<<ComboboxSelected>>", self._on_link_changed)
+        self.var_site = tk.StringVar()
+        tk.Entry(edit_frame, textvariable=self.var_site, width=10,
+                 font=("新細明體", 11)).grid(row=r, column=1, sticky="w", pady=3)
 
-        tk.Label(edit_frame, text="IP:", bg=CLR_BG, fg=CLR_TITLE_FG,
+        tk.Label(edit_frame, text="Server IP:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=2, sticky="e", padx=(16, 4))
-        self.var_ip = tk.StringVar()
-        self.ent_ip = tk.Entry(edit_frame, textvariable=self.var_ip, width=16,
-                               font=("新細明體", 11))
-        self.ent_ip.grid(row=r, column=3, sticky="w", pady=3)
+        self.var_server_ip = tk.StringVar()
+        tk.Entry(edit_frame, textvariable=self.var_server_ip, width=16,
+                 font=("新細明體", 11)).grid(row=r, column=3, sticky="w", pady=3)
 
-        tk.Label(edit_frame, text="Port:", bg=CLR_BG, fg=CLR_TITLE_FG,
+        tk.Label(edit_frame, text="印表機 IP:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=4, sticky="e", padx=(16, 4))
-        self.var_port = tk.StringVar(value="9100")
-        self.ent_port = tk.Entry(edit_frame, textvariable=self.var_port, width=6,
-                                 font=("新細明體", 11))
-        self.ent_port.grid(row=r, column=5, sticky="w", pady=3)
+        self.var_printer_ip = tk.StringVar()
+        tk.Entry(edit_frame, textvariable=self.var_printer_ip, width=16,
+                 font=("新細明體", 11)).grid(row=r, column=5, sticky="w", pady=3)
 
-        # Row 2
+        # Row 2: Port / Driver
         r = 2
-        tk.Label(edit_frame, text="USB Port:", bg=CLR_BG, fg=CLR_TITLE_FG,
+        tk.Label(edit_frame, text="Port:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=0, sticky="e", padx=(0, 4))
-        self.var_usb = tk.StringVar(value="6")
-        self.ent_usb = tk.Entry(edit_frame, textvariable=self.var_usb, width=6,
-                                font=("新細明體", 11))
-        self.ent_usb.grid(row=r, column=1, sticky="w", pady=3)
+        self.var_port = tk.StringVar(value="9100")
+        tk.Entry(edit_frame, textvariable=self.var_port, width=6,
+                 font=("新細明體", 11)).grid(row=r, column=1, sticky="w", pady=3)
 
-        tk.Label(edit_frame, text="藍牙名稱:", bg=CLR_BG, fg=CLR_TITLE_FG,
+        tk.Label(edit_frame, text="Driver:", bg=CLR_BG, fg=CLR_TITLE_FG,
                  font=("新細明體", 11)).grid(row=r, column=2, sticky="e", padx=(16, 4))
-        self.var_bt = tk.StringVar()
-        self.ent_bt = tk.Entry(edit_frame, textvariable=self.var_bt, width=20,
-                               font=("新細明體", 11))
-        self.ent_bt.grid(row=r, column=3, sticky="w", pady=3)
+        self.var_driver = tk.StringVar()
+        tk.Entry(edit_frame, textvariable=self.var_driver, width=20,
+                 font=("新細明體", 11)).grid(row=r, column=3, sticky="w", pady=3)
+
+        tk.Label(edit_frame, text="", bg=CLR_BG,
+                 font=("新細明體", 9)).grid(row=r, column=4, sticky="e")
+        tk.Label(edit_frame, text="USB 填 USB，藍牙填 #名稱，有 IP 可留空",
+                 fg=CLR_ACCENT, bg=CLR_BG, font=("新細明體", 9)).grid(
+                     row=r, column=5, sticky="w", pady=3)
 
         # Row 3: 公差校正
         r = 3
@@ -213,9 +221,6 @@ class PrinterSetting(tk.Toplevel):
                   bg=CLR_BTN_BG, fg=CLR_BTN_FG, activebackground="#1A6AA5",
                   command=self._on_save).grid(row=r, column=5, sticky="e", padx=4, pady=3)
 
-        # 初始連線欄位狀態
-        self._on_link_changed(None)
-
     # ── Grid ─────────────────────────────────────────────────
 
     def _refresh_grid(self) -> None:
@@ -228,15 +233,15 @@ class PrinterSetting(tk.Toplevel):
             self.tree.insert("", "end", values=(
                 p.get("printer_id", ""),
                 p.get("printer_name", ""),
-                p.get("link_type", ""),
-                p.get("ip_address", ""),
-                p.get("ip_port", ""),
-                p.get("usb_port", ""),
-                p.get("bt_name", ""),
+                p.get("site_id", ""),
+                p.get("server_ip", ""),
+                p.get("printer_ip", ""),
+                p.get("printer_port", ""),
+                p.get("printer_driver", ""),
                 p.get("shift_left", 0),
                 p.get("shift_top", 0),
                 p.get("darkness", 12),
-                p.get("printer_type", ""),
+                p.get("printer_model", ""),
                 active,
                 p.get("note", ""),
             ), tags=(tag,))
@@ -253,26 +258,16 @@ class PrinterSetting(tk.Toplevel):
 
         self.var_id.set(values[0])
         self.var_name.set(values[1])
-        self.var_link.set(values[2])
-        self.var_ip.set(values[3])
-        self.var_port.set(values[4] or "9100")
-        self.var_usb.set(values[5] or "6")
-        self.var_bt.set(values[6])
+        self.var_site.set(values[2])
+        self.var_server_ip.set(values[3])
+        self.var_printer_ip.set(values[4])
+        self.var_port.set(values[5] or "9100")
+        self.var_driver.set(values[6])
         self.var_shift_l.set(values[7])
         self.var_shift_t.set(values[8])
         self.var_dark.set(values[9])
-        self.var_type.set(values[10])
+        self.var_model.set(values[10])
         self.var_note.set(values[12])
-
-        self._on_link_changed(None)
-
-    def _on_link_changed(self, _event) -> None:
-        link = self.var_link.get()
-        # TCP: IP/Port 啟用, USB/BT 停用
-        self.ent_ip.config(state="normal" if link == "TCP" else "disabled")
-        self.ent_port.config(state="normal" if link == "TCP" else "disabled")
-        self.ent_usb.config(state="normal" if link == "USB" else "disabled")
-        self.ent_bt.config(state="normal" if link == "BT" else "disabled")
 
     def _on_refresh(self) -> None:
         # 後續改為 Call API 重新取得
@@ -287,15 +282,15 @@ class PrinterSetting(tk.Toplevel):
 
         p = self._printers[self._selected_idx]
         p["printer_name"] = self.var_name.get()
-        p["link_type"] = self.var_link.get()
-        p["ip_address"] = self.var_ip.get()
-        p["ip_port"] = self.var_port.get()
-        p["usb_port"] = self.var_usb.get()
-        p["bt_name"] = self.var_bt.get()
+        p["site_id"] = self.var_site.get()
+        p["server_ip"] = self.var_server_ip.get()
+        p["printer_ip"] = self.var_printer_ip.get()
+        p["printer_port"] = self.var_port.get()
+        p["printer_driver"] = self.var_driver.get()
         p["shift_left"] = self.var_shift_l.get()
         p["shift_top"] = self.var_shift_t.get()
         p["darkness"] = self.var_dark.get()
-        p["printer_type"] = self.var_type.get()
+        p["printer_model"] = self.var_model.get()
         p["note"] = self.var_note.get()
 
         self._refresh_grid()
@@ -318,15 +313,15 @@ class PrinterSetting(tk.Toplevel):
         new_printer = {
             "printer_id": new_id,
             "printer_name": "",
-            "link_type": "USB",
-            "ip_address": "",
-            "ip_port": "9100",
-            "usb_port": "6",
-            "bt_name": "",
+            "site_id": "",
+            "server_ip": "",
+            "printer_ip": "",
+            "printer_port": "9100",
+            "printer_driver": "USB",
             "shift_left": "0",
             "shift_top": "0",
             "darkness": "12",
-            "printer_type": "",
+            "printer_model": "",
             "is_active": 1,
             "note": "",
         }
@@ -358,26 +353,29 @@ class PrinterSetting(tk.Toplevel):
         return [
             {
                 "printer_id": "PRN-001", "printer_name": "血庫一樓條碼機",
-                "link_type": "USB", "ip_address": "", "ip_port": "9100",
-                "usb_port": "6", "bt_name": "",
+                "site_id": "S01", "server_ip": "192.168.1.10",
+                "printer_ip": "", "printer_port": "9100",
+                "printer_driver": "USB",
                 "shift_left": "0", "shift_top": "0", "darkness": "12",
-                "printer_type": "GoDEX G530（桌上型）", "is_active": 1,
+                "printer_model": "GoDEX G530（桌上型）", "is_active": 1,
                 "note": "血庫一樓護理站旁",
             },
             {
                 "printer_id": "PRN-002", "printer_name": "血庫二樓條碼機",
-                "link_type": "TCP", "ip_address": "192.168.1.50", "ip_port": "9100",
-                "usb_port": "", "bt_name": "",
+                "site_id": "S01", "server_ip": "192.168.1.10",
+                "printer_ip": "192.168.1.50", "printer_port": "9100",
+                "printer_driver": "",
                 "shift_left": "2", "shift_top": "-3", "darkness": "14",
-                "printer_type": "GoDEX EZ2250i（工業型）", "is_active": 1,
+                "printer_model": "GoDEX EZ2250i（工業型）", "is_active": 1,
                 "note": "成分處理室",
             },
             {
                 "printer_id": "PRN-003", "printer_name": "採血車攜帶型",
-                "link_type": "BT", "ip_address": "", "ip_port": "",
-                "usb_port": "", "bt_name": "GoDEX_MX30_BT01",
+                "site_id": "S01", "server_ip": "192.168.1.10",
+                "printer_ip": "", "printer_port": "",
+                "printer_driver": "#GoDEX_MX30_BT01",
                 "shift_left": "0", "shift_top": "0", "darkness": "13",
-                "printer_type": "GoDEX MX30（攜帶型）", "is_active": 1,
+                "printer_model": "GoDEX MX30（攜帶型）", "is_active": 1,
                 "note": "採血車藍牙連線",
             },
         ]

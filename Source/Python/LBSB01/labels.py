@@ -1,5 +1,5 @@
 """
-標籤定義 — 對應 EA 代碼表「標籤類別」(Code: LB_TYPE)。
+標籤定義 — 對應參考參數 LB_TYPE（標籤類別）。
 
 群組：CP（成分）、BC（檢驗）、BS（供應）、TL（檢驗檢體）
 """
@@ -29,7 +29,7 @@ class LabelDef:
         return f"{self.width_mm}mm x {self.height_mm}mm"
 
 
-# ── 全部 16 種標籤定義（依 EA 代碼表）──────────────────────────
+# ── 全部 16 種標籤定義（依參考參數 LB_TYPE）──────────────────────
 
 LABEL_DEFS: list[LabelDef] = [
     # CP — 成分
