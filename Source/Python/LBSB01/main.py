@@ -40,8 +40,10 @@ CLR_OFFLINE_BG = "#4A7FB5"   # 離線區背景（深藍）
 CLR_OFFLINE_FG = "#FFFFFF"   # 離線區前景（白）
 CLR_TITLE_FG = "#003366"     # 標題前景
 CLR_ACCENT = "#1A5276"       # 強調色
-CLR_BTN_BG = "#2E86C1"       # 按鈕背景
-CLR_BTN_FG = "#FFFFFF"       # 按鈕前景
+CLR_BTN_BG = "#2E86C1"       # 一般按鈕背景
+CLR_BTN_FG = "#FFFFFF"       # 一般按鈕前景
+CLR_PRINT_BG = "#D35400"    # 線上列印按鈕背景（橘）
+CLR_PRINT_FG = "#FFFFFF"    # 線上列印按鈕前景
 
 
 class App(tk.Tk):
@@ -63,10 +65,6 @@ class App(tk.Tk):
                                 command=self._open_printer_setting)
         menubar.add_cascade(label="設定", menu=menu_setting)
         menubar.add_command(label="標籤測試頁", command=self._open_sample_data_print)
-        menubar.add_command(label="列印空白NG標籤",
-                            command=lambda: messagebox.showinfo("NG", "空白NG標籤（待實作）"))
-        menubar.add_command(label="查詢歷史記錄",
-                            command=lambda: messagebox.showinfo("歷史", "歷史記錄查詢（待實作）"))
         self.config(menu=menubar)
 
     # ── UI ───────────────────────────────────────────────────
@@ -162,8 +160,8 @@ class App(tk.Tk):
 
         self.btn_print_online = tk.Button(
             frm_queue, text="  列印線上指定項目  ",
-            font=("標楷體", 18, "bold"), bg=CLR_BTN_BG, fg=CLR_BTN_FG,
-            activebackground="#1A6AA5", activeforeground="white",
+            font=("標楷體", 18, "bold"), bg=CLR_PRINT_BG, fg=CLR_PRINT_FG,
+            activebackground="#A04000", activeforeground="white",
             command=self._on_print)
         self.btn_print_online.pack(fill="x", pady=(4, 0), ipady=4)
 
@@ -226,25 +224,40 @@ class App(tk.Tk):
         row3 = tk.Frame(self, bg=CLR_BG)
         row3.pack(fill="both", expand=True, padx=6, pady=(0, 4))
 
-        # --- 左: 離線列印項目明細 ---
-        frm_offline = tk.LabelFrame(row3, text="離線列印項目明細", font=("標楷體", 12),
+        # --- 左: 離線列印項目明細（結構同線上明細，對應右側 Offline Queue）---
+        frm_offline = tk.LabelFrame(row3, text="離線列印項目明細", font=("標楷體", 12, "bold"),
                                     fg=CLR_OFFLINE_FG, bg=CLR_OFFLINE_BG, padx=8, pady=4)
         frm_offline.pack(side="left", fill="y", padx=(0, 4))
 
-        offline_fields = ["時間序:", "條碼種類:", "待列印張數:", "列印者:", "印表機編號:", "UUID:"]
-        for i, lbl_text in enumerate(offline_fields):
+        off_fields = [
+            ("時間序:", "off_var_sn", 30, True),
+            ("條碼種類:", "off_var_type", 8, True),
+            ("待列印張數:", "off_var_count", 10, True),
+            ("列印者:", "off_var_user", 15, False),
+            ("印表機編號:", "off_var_printer_no", 10, False),
+            ("UUID:", "off_var_uuid", 25, True),
+        ]
+        for i, (lbl_text, var_name, width, disabled) in enumerate(off_fields):
             tk.Label(frm_offline, text=lbl_text, bg=CLR_OFFLINE_BG, fg=CLR_OFFLINE_FG,
                      font=("新細明體", 9)).grid(row=i, column=0, sticky="e", padx=(0, 4), pady=2)
-            tk.Entry(frm_offline, width=20, state="disabled",
+            sv = tk.StringVar()
+            setattr(self, var_name, sv)
+            state = "disabled" if disabled else "normal"
+            tk.Entry(frm_offline, textvariable=sv, width=width, state=state,
                      font=("新細明體", 9)).grid(row=i, column=1, sticky="w", pady=2)
 
-        r2 = len(offline_fields)
+        self.off_lbl_sname = tk.Label(frm_offline, text="", bg=CLR_OFFLINE_BG, fg="#FFD700",
+                                      font=("標楷體", 11, "bold"))
+        self.off_lbl_sname.grid(row=1, column=2, sticky="w", padx=(4, 0))
+
+        r2 = len(off_fields)
         tk.Label(frm_offline, text="變更待印印表機:", bg=CLR_OFFLINE_BG, fg="#FFD700",
                  font=("新細明體", 10)).grid(row=r2, column=0, sticky="e", padx=(0, 4), pady=4)
-        cmb_off = ttk.Combobox(frm_offline, width=25, font=("新細明體", 11))
-        cmb_off["values"] = ["USB"]
-        cmb_off.grid(row=r2, column=1, sticky="w", pady=4)
-        tk.Button(frm_offline, text="儲存", font=("新細明體", 11)).grid(row=r2, column=2, padx=4)
+        self.off_var_printer = tk.StringVar(value="USB")
+        self.off_cmb_printer = ttk.Combobox(frm_offline, textvariable=self.off_var_printer,
+                                            width=25, font=("新細明體", 11))
+        self.off_cmb_printer["values"] = ["USB"]
+        self.off_cmb_printer.grid(row=r2, column=1, columnspan=2, sticky="w", pady=4)
 
         # --- 右: 離線等待重印項目 (Offline Queue) ---
         frm_wait = tk.LabelFrame(row3, text="離線等待重印項目 (Offline Queue)",
@@ -274,8 +287,9 @@ class App(tk.Tk):
         frm_test = tk.LabelFrame(row4, text="列印測試資料", font=("標楷體", 10),
                                  fg=CLR_OFFLINE_FG, bg=CLR_OFFLINE_BG, padx=4, pady=4)
         frm_test.pack(side="left", fill="y")
-        self.var_test_text = tk.StringVar(value="測試標籤列印資料\\n本頁為測試用")
-        tk.Entry(frm_test, textvariable=self.var_test_text, width=40,
+        self.var_test_text = tk.StringVar(
+            value=r"\F40;測試標籤列印資料本頁此列\n第二列,加\F##;可設定字型大小\n第三列測試頁- *****測試頁***\n第四列測試頁- *****測試頁***")
+        tk.Entry(frm_test, textvariable=self.var_test_text, width=50,
                  font=("新細明體", 9)).pack(side="left", padx=(0, 4))
         tk.Button(frm_test, text="列印測試資料", font=("新細明體", 9),
                   command=self._on_test_print).pack(side="left")
@@ -402,7 +416,85 @@ class App(tk.Tk):
         SampleDataPrint(self, self.var_link, self.var_ip, self.var_port)
 
     def _on_test_print(self) -> None:
-        messagebox.showinfo("測試列印", f"測試文字: {self.var_test_text.get()}")
+        """列印測試資料 — 移植 VB6 PrintTest + Bar_ANY 邏輯。
+
+        文字格式：可選 \\F##; 前綴設定字型大小，\\n 換行。
+        範例：\\F45;第一列\\n第二列
+        """
+        raw = self.var_test_text.get().strip()
+        if not raw:
+            messagebox.showwarning("測試列印", "請輸入測試文字")
+            return
+
+        # 解析 \F##; 前綴取得字型大小（預設 60）
+        font_h = 60
+        text = raw
+        if text.startswith("\\F"):
+            sep = text.find(";")
+            if sep > 2:
+                try:
+                    font_h = int(text[2:sep])
+                except ValueError:
+                    pass
+                text = text[sep + 1:]
+
+        lines = text.split("\\n")
+
+        try:
+            paper_w, paper_h = self._get_paper_size()
+        except ValueError as e:
+            messagebox.showwarning("輸入錯誤", str(e))
+            return
+
+        ld = self._get_label_def()
+        gap = ld.gap if ld else 3
+        link = LinkType.USB if self.var_link.get() == "USB" else LinkType.TCP
+        ip = self.var_ip.get().strip()
+        try:
+            tcp_port = int(self.var_port.get().strip())
+        except ValueError:
+            tcp_port = 9100
+
+        try:
+            shift_l = int(self.var_shift_l.get().strip() or "0")
+        except ValueError:
+            shift_l = 0
+        try:
+            shift_t = int(self.var_shift_t.get().strip() or "0")
+        except ValueError:
+            shift_t = 0
+        try:
+            darkness = int(self.var_dark.get().strip() or "12")
+        except ValueError:
+            darkness = 12
+
+        self._add_msg(f"測試列印 FontH={font_h} 共{len(lines)}行")
+
+        try:
+            with GodexPrinter(link) as printer:
+                printer.open(ip=ip, tcp_port=tcp_port)
+                printer.label_setup(paper_w, paper_h, gap, darkness=darkness, speed=2)
+                printer.job_start()
+
+                bx = 5 + shift_l
+                by = 5 + shift_t
+                for line in lines:
+                    printer.text_out(bx, by, font_h, "標楷體", line)
+                    self._add_msg(line)
+                    by += font_h
+
+                printer.job_end()
+
+            mode = "USB" if link == LinkType.USB else f"TCP {ip}:{tcp_port}"
+            self._add_msg(f"測試列印完成（{mode}）")
+
+        except FileNotFoundError as e:
+            messagebox.showerror("DLL 錯誤", str(e))
+        except ConnectionError as e:
+            messagebox.showerror("連線失敗", str(e))
+        except Exception as e:
+            log.error("測試列印失敗:\n%s", traceback.format_exc())
+            messagebox.showerror("測試列印失敗", f"{e}\n\n詳見 app.log")
 
 
 if __name__ == "__main__":

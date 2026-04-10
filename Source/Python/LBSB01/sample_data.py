@@ -130,19 +130,27 @@ def _sample_cp12(code: str, bag_no: str) -> LabelData:
 
 
 def _sample_cp19(code: str, bag_no: str) -> LabelData:
-    """CP19 — 血品核對標籤-不適輸用（舊 L09）。"""
+    """CP19 — 血品核對標籤-不適輸用（舊 L09）。
+
+    對應 VB6 BAR_L09_300DPI 使用的欄位：
+      Data_9  = 採血日期（標籤左上方）
+      Data_16 = 左半文字（多行，\\n 分隔）
+      Data_4  = 血品名稱（右半，自動換行）
+      Data_12 = 右半文字（多行，\\n 分隔）
+      Data_13 = 地址（含 Logo）
+      Data_6  = ISBT DIN13（13碼+Flag2碼+Check1碼）
+      Data_7  = ISBT PD5
+    """
     return LabelData(
         label_type=code,
         bag_no=bag_no,
-        data_1=f"{bag_no}|18721|20180207|01|1|S",
-        data_2="不適輸用血品",
-        data_3="09001",
-        data_4="不適輸用",
-        data_5="250",
-        data_6="2018/08/07",
-        data_7="09001V00",
-        data_8="B",
-        data_9="+",
+        data_4="FFP from WB52 in 8hrs 新鮮冷凍血漿",  # 血品名稱
+        data_6="T88661921675600D",                     # ISBT DIN13(13) + Flag(2) + Check(1)
+        data_7="E0212V00",                             # ISBT PD5
+        data_9="2019/07/21",                              # 採血日期
+        data_12="本血品含有3.0E+11個血小板。\\n抗凝血劑: ACD-A",  # 右半文字
+        data_13="台灣血液基金會台北捐血中心\\n地址:台北市北投區立德路123號",  # 地址
+        data_16="不適輸用\\nHBsAg 檢驗陽性",            # 左半文字
         data_19="18721",
     )
 

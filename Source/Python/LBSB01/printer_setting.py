@@ -88,15 +88,15 @@ class PrinterSetting(tk.Toplevel):
         grid_frame.pack(fill="both", expand=True, padx=8, pady=4)
 
         columns = ("printer_id", "printer_name", "site_id", "server_ip",
-                   "printer_ip", "printer_port", "printer_driver",
+                   "printer_ip", "printer_driver",
                    "shift_left", "shift_top", "darkness",
                    "printer_model", "is_active", "note")
         col_names = ("印表機編號", "名稱", "站點", "Server IP",
-                     "印表機 IP", "Port", "Driver",
+                     "印表機 IP", "Driver",
                      "左位移", "上位移", "明暗",
                      "型號", "啟用", "說明")
         col_widths = (90, 120, 55, 120,
-                      120, 50, 130,
+                      120, 130,
                       55, 55, 45,
                       150, 40, 150)
 
@@ -169,25 +169,17 @@ class PrinterSetting(tk.Toplevel):
         tk.Entry(edit_frame, textvariable=self.var_printer_ip, width=16,
                  font=("新細明體", 11)).grid(row=r, column=5, sticky="w", pady=3)
 
-        # Row 2: Port / Driver
+        # Row 2: Driver
         r = 2
-        tk.Label(edit_frame, text="Port:", bg=CLR_BG, fg=CLR_TITLE_FG,
-                 font=("新細明體", 11)).grid(row=r, column=0, sticky="e", padx=(0, 4))
-        self.var_port = tk.StringVar(value="9100")
-        tk.Entry(edit_frame, textvariable=self.var_port, width=6,
-                 font=("新細明體", 11)).grid(row=r, column=1, sticky="w", pady=3)
-
         tk.Label(edit_frame, text="Driver:", bg=CLR_BG, fg=CLR_TITLE_FG,
-                 font=("新細明體", 11)).grid(row=r, column=2, sticky="e", padx=(16, 4))
+                 font=("新細明體", 11)).grid(row=r, column=0, sticky="e", padx=(0, 4))
         self.var_driver = tk.StringVar()
         tk.Entry(edit_frame, textvariable=self.var_driver, width=20,
-                 font=("新細明體", 11)).grid(row=r, column=3, sticky="w", pady=3)
+                 font=("新細明體", 11)).grid(row=r, column=1, sticky="w", pady=3)
 
-        tk.Label(edit_frame, text="", bg=CLR_BG,
-                 font=("新細明體", 9)).grid(row=r, column=4, sticky="e")
         tk.Label(edit_frame, text="USB 填 USB，藍牙填 #名稱，有 IP 可留空",
                  fg=CLR_ACCENT, bg=CLR_BG, font=("新細明體", 9)).grid(
-                     row=r, column=5, sticky="w", pady=3)
+                     row=r, column=2, columnspan=4, sticky="w", pady=3)
 
         # Row 3: 公差校正
         r = 3
@@ -236,7 +228,6 @@ class PrinterSetting(tk.Toplevel):
                 p.get("site_id", ""),
                 p.get("server_ip", ""),
                 p.get("printer_ip", ""),
-                p.get("printer_port", ""),
                 p.get("printer_driver", ""),
                 p.get("shift_left", 0),
                 p.get("shift_top", 0),
@@ -261,13 +252,12 @@ class PrinterSetting(tk.Toplevel):
         self.var_site.set(values[2])
         self.var_server_ip.set(values[3])
         self.var_printer_ip.set(values[4])
-        self.var_port.set(values[5] or "9100")
-        self.var_driver.set(values[6])
-        self.var_shift_l.set(values[7])
-        self.var_shift_t.set(values[8])
-        self.var_dark.set(values[9])
-        self.var_model.set(values[10])
-        self.var_note.set(values[12])
+        self.var_driver.set(values[5])
+        self.var_shift_l.set(values[6])
+        self.var_shift_t.set(values[7])
+        self.var_dark.set(values[8])
+        self.var_model.set(values[9])
+        self.var_note.set(values[11])
 
     def _on_refresh(self) -> None:
         # 後續改為 Call API 重新取得
@@ -285,7 +275,6 @@ class PrinterSetting(tk.Toplevel):
         p["site_id"] = self.var_site.get()
         p["server_ip"] = self.var_server_ip.get()
         p["printer_ip"] = self.var_printer_ip.get()
-        p["printer_port"] = self.var_port.get()
         p["printer_driver"] = self.var_driver.get()
         p["shift_left"] = self.var_shift_l.get()
         p["shift_top"] = self.var_shift_t.get()
@@ -316,7 +305,6 @@ class PrinterSetting(tk.Toplevel):
             "site_id": "",
             "server_ip": "",
             "printer_ip": "",
-            "printer_port": "9100",
             "printer_driver": "USB",
             "shift_left": "0",
             "shift_top": "0",
@@ -354,7 +342,7 @@ class PrinterSetting(tk.Toplevel):
             {
                 "printer_id": "PRN-001", "printer_name": "血庫一樓條碼機",
                 "site_id": "S01", "server_ip": "192.168.1.10",
-                "printer_ip": "", "printer_port": "9100",
+                "printer_ip": "",
                 "printer_driver": "USB",
                 "shift_left": "0", "shift_top": "0", "darkness": "12",
                 "printer_model": "GoDEX G530（桌上型）", "is_active": 1,
@@ -363,7 +351,7 @@ class PrinterSetting(tk.Toplevel):
             {
                 "printer_id": "PRN-002", "printer_name": "血庫二樓條碼機",
                 "site_id": "S01", "server_ip": "192.168.1.10",
-                "printer_ip": "192.168.1.50", "printer_port": "9100",
+                "printer_ip": "192.168.1.50",
                 "printer_driver": "",
                 "shift_left": "2", "shift_top": "-3", "darkness": "14",
                 "printer_model": "GoDEX EZ2250i（工業型）", "is_active": 1,
@@ -372,7 +360,7 @@ class PrinterSetting(tk.Toplevel):
             {
                 "printer_id": "PRN-003", "printer_name": "採血車攜帶型",
                 "site_id": "S01", "server_ip": "192.168.1.10",
-                "printer_ip": "", "printer_port": "",
+                "printer_ip": "",
                 "printer_driver": "#GoDEX_MX30_BT01",
                 "shift_left": "0", "shift_top": "0", "darkness": "13",
                 "printer_model": "GoDEX MX30（攜帶型）", "is_active": 1,

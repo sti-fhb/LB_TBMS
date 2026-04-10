@@ -16,6 +16,7 @@ from labels import LABEL_DEFS, LABEL_MAP, PAPER_SIZES, LabelDef
 from sample_data import LabelData, build_sample
 from bar_l00 import print_l00
 from bar_cp11 import print_cp11
+from bar_cp19 import print_cp19
 from ezpl import GodexPrinter, LinkType
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ def print_label(
         print_l00(printer, bld, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
     elif code == "CP11":
         print_cp11(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
+    elif code == "CP19":
+        print_cp19(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
     else:
         _print_stub(printer, label_def, data, paper_w, paper_h)
 
