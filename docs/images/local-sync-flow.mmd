@@ -1,0 +1,58 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D6E4F0', 'primaryTextColor': '#003366', 'primaryBorderColor': '#1A5276', 'lineColor': '#2E86C1', 'fontSize': '13px'}, 'flowchart': {'nodeSpacing': 50, 'rankSpacing': 60}}}%%
+flowchart TD
+    START(["重連成功<br/>session.online = True"]) --> READ["讀取 PENDING_OPS<br/>WHERE STATUS=0<br/>ORDER BY SEQ"]
+
+    READ --> CHECK{"有待同步<br/>操作？"}
+    CHECK -->|"無"| REFRESH
+
+    CHECK -->|"有"| PICK["取出第 1 筆<br/>SEQ, OP_TYPE, TARGET, PAYLOAD"]
+
+    PICK --> SWITCH{"OP_TYPE?"}
+
+    SWITCH -->|"INSERT"| OP_INS["INSERT INTO 中央 {TARGET}<br/>（如 LB_PRINTER）<br/>PAYLOAD = 欄位值"]
+    SWITCH -->|"UPDATE"| OP_UPD["UPDATE 中央 {TARGET}<br/>PAYLOAD = SET 值 + WHERE 條件"]
+    SWITCH -->|"DELETE"| OP_DEL["DELETE FROM 中央 {TARGET}<br/>PAYLOAD = WHERE 條件"]
+    SWITCH -->|"CALL_SRV"| OP_SRV["HTTP Call 跨模組 SRV<br/>（如 SRVDP020）<br/>PAYLOAD = JSON Body"]
+
+    OP_INS --> RESULT
+    OP_UPD --> RESULT
+    OP_DEL --> RESULT
+    OP_SRV --> RESULT
+
+    RESULT{"執行結果？"}
+    RESULT -->|"成功"| MARK_OK["mark_op_synced(seq)<br/>STATUS → 1"]
+    RESULT -->|"失敗"| MARK_FAIL["mark_op_failed(seq)<br/>STATUS → 2<br/>（不阻塞，繼續下一筆）"]
+
+    MARK_OK --> NEXT{"還有下一筆？"}
+    MARK_FAIL --> NEXT
+
+    NEXT -->|"有"| PICK
+    NEXT -->|"無"| REFRESH
+
+    REFRESH["全量刷新 Local Cache<br/>從中央 DB 拉最新資料<br/>replace_all_printers(site_id, 中央清單)<br/>→ 確保 Local 與中央一致"]
+
+    REFRESH --> DONE(["同步完成<br/>畫面刷新"])
+
+    subgraph EXAMPLE["範例：離線期間刪除印表機 PRN-004"]
+        direction TB
+        EX1["SEQ=1: CALL_SRV / SRVDP020<br/>{site_id:S01, printer_id:PRN-004}<br/>→ 先清 DP 子表"]
+        EX2["SEQ=2: DELETE / LB_PRINTER<br/>{printer_id:PRN-004}<br/>→ 再刪主表"]
+        EX1 --> EX2
+    end
+
+    subgraph PENDING["PENDING_OPS Table"]
+        direction LR
+        COL["SEQ | OP_TYPE | TARGET | PAYLOAD | STATUS<br/>───────────────────────────────────<br/>  1  | CALL_SRV | SRVDP020 | {site_id, pid} | 0→1<br/>  2  | DELETE   | LB_PRINTER | {pid}         | 0→1<br/>  3  | UPDATE  | LB_PRINTER | {data}         | 0→2 ❌"]
+    end
+
+    style START fill:#27AE60,stroke:#1E8449,color:#FFF,stroke-width:2px
+    style DONE fill:#27AE60,stroke:#1E8449,color:#FFF,stroke-width:2px
+    style REFRESH fill:#F5B041,stroke:#D35400,color:#333,stroke-width:2px
+    style MARK_OK fill:#27AE60,stroke:#1E8449,color:#FFF
+    style MARK_FAIL fill:#E74C3C,stroke:#922B21,color:#FFF
+    style OP_INS fill:#D6E4F0,stroke:#1A5276
+    style OP_UPD fill:#D6E4F0,stroke:#1A5276
+    style OP_DEL fill:#D6E4F0,stroke:#1A5276
+    style OP_SRV fill:#D6E4F0,stroke:#1A5276
+    style EXAMPLE fill:#FEF9E7,stroke:#D4AC0D,stroke-width:1px
+    style PENDING fill:#F5EEF8,stroke:#8E44AD,stroke-width:1px

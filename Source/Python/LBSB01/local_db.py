@@ -29,7 +29,7 @@ def _app_dir() -> Path:
     return Path(__file__).parent
 
 
-def build_res_id(
+def build_result(
     fixed: bool = False,
     width: int | None = None,
     height: int | None = None,
@@ -38,7 +38,7 @@ def build_res_id(
     darkness: int | None = None,
     memo: str = "",
 ) -> str:
-    """組 RES_ID（依 EA Rule {AEF2D0FB-7EE2-4e0f-96C6-22C30BD80E66}）。
+    """組 RESULT（依 EA Rule {AEF2D0FB-7EE2-4e0f-96C6-22C30BD80E66}）。
 
     格式：[VERSION] + ['F'?固定參數] + 'W'[寬] + 'H'[長] + 'L'[左位移] + 'T'[上位移] + 'D'[明暗值] + [備註]
 
@@ -46,9 +46,9 @@ def build_res_id(
     純移動/刪除：僅帶備註段（如 -OnLine / -OffLine / -Delete / -Off_DEL）
 
     範例：
-        build_res_id(width=80, height=35, shift_left=40, shift_top=0, darkness=8)
+        build_result(width=80, height=35, shift_left=40, shift_top=0, darkness=8)
         → "v1.1r1W80H35L40T0D8"
-        build_res_id(memo="-OffLine")
+        build_result(memo="-OffLine")
         → "v1.1r1-OffLine"
     """
     parts = [VERSION]
@@ -123,7 +123,7 @@ class LocalDB:
                 DATA_17         TEXT, DATA_18 TEXT, DATA_19 TEXT,
                 SERVER_IP       TEXT,
                 STATUS          INTEGER DEFAULT 0,
-                RES_ID          TEXT,
+                RESULT          TEXT,
                 CREATED_USER    TEXT,
                 CREATED_AT      TEXT,
                 UPDATED_AT      TEXT
@@ -283,10 +283,10 @@ class LocalDB:
         """刪除 Queue 單筆：
 
         - 從 ONLINE_QUEUE 或 OFFLINE_QUEUE 移除
-        - LB_PRINT_LOG_CACHE: Status=1（終態），RES_ID 加備註（-Delete / -Off_DEL）
+        - LB_PRINT_LOG_CACHE: Status=1（終態），RESULT 加備註（-Delete / -Off_DEL）
         """
         memo = "-Delete" if online else "-Off_DEL"
-        res_id = build_res_id(memo=memo)
+        result = build_result(memo=memo)
 
         # 先從 Queue 表移除
         table = "ONLINE_QUEUE" if online else "OFFLINE_QUEUE"
@@ -294,7 +294,7 @@ class LocalDB:
         self._conn.commit()
 
         # 更新 LOG 狀態
-        self.update_print_log(uuid, status=1, res_id=res_id)
+        self.update_print_log(uuid, status=1, result=result)
         log.debug("Queue task 刪除: uuid=%s table=%s", uuid[:8], table)
 
     def move_task_to_offline(self, uuid: str) -> None:
@@ -311,7 +311,7 @@ class LocalDB:
             (uuid, now),
         )
         self._conn.commit()
-        self.update_print_log(uuid, status=2, res_id=build_res_id(memo="-OffLine"))
+        self.update_print_log(uuid, status=2, result=build_result(memo="-OffLine"))
 
     def move_task_to_online(self, uuid: str) -> None:
         """Offline → Online（雙擊移回）。"""
@@ -327,7 +327,7 @@ class LocalDB:
             (uuid, now),
         )
         self._conn.commit()
-        self.update_print_log(uuid, status=0, res_id=build_res_id(memo="-OnLine"))
+        self.update_print_log(uuid, status=0, result=build_result(memo="-OnLine"))
 
     def override_task_printer(self, uuid: str, new_printer_id: str) -> None:
         """覆寫 Task 的目標印表機。"""
@@ -367,7 +367,7 @@ class LocalDB:
             "(UUID, BAR_TYPE, SITE_ID, PRINTER_ID, SPECIMEN_NO, "
             " DATA_1, DATA_2, DATA_3, DATA_4, DATA_5, DATA_6, DATA_7, DATA_8, DATA_9, DATA_10, "
             " DATA_11, DATA_12, DATA_13, DATA_14, DATA_15, DATA_16, DATA_17, DATA_18, DATA_19, "
-            " SERVER_IP, STATUS, RES_ID, CREATED_USER, CREATED_AT, UPDATED_AT) "
+            " SERVER_IP, STATUS, RESULT, CREATED_USER, CREATED_AT, UPDATED_AT) "
             "VALUES (?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?)",
             (
                 data.get("uuid"), data.get("bar_type"), data.get("site_id"),
@@ -379,22 +379,22 @@ class LocalDB:
                 data.get("data_13"), data.get("data_14"), data.get("data_15"),
                 data.get("data_16"), data.get("data_17"), data.get("data_18"),
                 data.get("data_19"),
-                data.get("server_ip"), data.get("status", 0), data.get("res_id"),
+                data.get("server_ip"), data.get("status", 0), data.get("result"),
                 data.get("created_user"), now, now,
             ),
         )
         self._conn.commit()
 
     def update_print_log(self, uuid: str, status: int | None = None,
-                         res_id: str | None = None) -> None:
-        """更新列印 LOG 狀態與 RES_ID。"""
+                         result: str | None = None) -> None:
+        """更新列印 LOG 狀態與 RESULT。"""
         updates, params = [], []
         if status is not None:
             updates.append("STATUS=?")
             params.append(status)
-        if res_id is not None:
-            updates.append("RES_ID=?")
-            params.append(res_id)
+        if result is not None:
+            updates.append("RESULT=?")
+            params.append(result)
         if not updates:
             return
         updates.append("UPDATED_AT=?")
@@ -437,8 +437,8 @@ class LocalDB:
         """刪除印表機。寫 Local Cache；離線時排入 PENDING_OPS（含跨模組 SRV）。"""
         self.delete_printer(printer_id)
         if not online:
-            # 順序保證：先 SRVDP018（清 DP 子表）→ 再 DELETE LB_PRINTER
-            self.enqueue_op("CALL_SRV", "SRVDP018",
+            # 順序保證：先 SRVDP020（清 DP 子表）→ 再 DELETE LB_PRINTER
+            self.enqueue_op("CALL_SRV", "SRVDP020",
                             {"site_id": site_id, "printer_id": printer_id})
             self.enqueue_op("DELETE", "LB_PRINTER",
                             {"printer_id": printer_id})

@@ -1,0 +1,39 @@
+%%{init: {'theme': 'base', 'themeVariables': {'actorBkg': '#D6E4F0', 'actorBorder': '#1A5276', 'actorTextColor': '#003366', 'signalColor': '#2E86C1', 'signalTextColor': '#003366', 'labelBoxBkgColor': '#FFF3E0', 'labelBoxBorderColor': '#D35400', 'labelTextColor': '#333', 'loopTextColor': '#333', 'noteBkgColor': '#FCF3CF', 'noteBorderColor': '#D4AC0D', 'noteTextColor': '#333', 'fontSize': '14px'}}}%%
+sequenceDiagram
+    participant U as LBSB01 使用者<br/>標籤測試頁
+    participant G as LBSB01 GUI<br/>(sample_data_print.py)
+    participant L as Task Listener<br/>localhost:9200
+    participant DB as local.db
+    participant Q as Offline Queue
+    participant P as GoDEX 印表機<br/>:9100
+
+    Note over U,P: 標籤測試頁流程（走同一條 Task Listener 路徑）
+
+    U->>G: 選擇標籤類型 + 印表機<br/>按下「列印測試資料」
+
+    G->>G: 1. 組裝測試資料<br/>(sample_data.py)
+    G->>G: 2. 產生 UUID
+    G->>G: 3. created_user = 本機 IP
+
+    G->>+L: 4. POST http://localhost:9200/api/lb/task<br/>Body: {uuid, bar_type, printer_id,<br/>data_1~19, status=2}
+
+    Note right of G: status=2 固定<br/>→ 進 Offline Queue<br/>不影響 Online 正式列印
+
+    L->>DB: 5. INSERT LB_PRINT_LOG_CACHE
+    L->>DB: 6. INSERT OFFLINE_QUEUE<br/>(status=2 → Offline)
+    L->>L: 7. 放 1 個通知進佇列
+    L-->>-G: 200 OK {success: true, uuid}
+
+    Note over G,Q: Main Thread 每 200ms 檢查通知佇列
+
+    G->>G: _poll_task_events()
+    G->>Q: _refresh_queues()<br/>測試項目出現在 Offline Queue
+
+    Note over U,P: 使用者在主畫面操作列印
+
+    U->>G: 從 Offline Queue 選取項目<br/>按「列印」或雙擊移至 Online
+
+    G->>P: EZPL 列印指令 (TCP:9100 or USB)
+    P-->>G: 列印完成
+
+    G->>DB: Status 2→1 (終態)<br/>RESULT: v1.1r1W80H35L40T0D8

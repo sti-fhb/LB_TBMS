@@ -1,0 +1,41 @@
+%%{init: {'theme': 'base', 'themeVariables': {'actorBkg': '#D6E4F0', 'actorBorder': '#1A5276', 'actorTextColor': '#003366', 'signalColor': '#2E86C1', 'signalTextColor': '#003366', 'labelBoxBkgColor': '#FFF3E0', 'labelBoxBorderColor': '#D35400', 'labelTextColor': '#333', 'loopTextColor': '#333', 'noteBkgColor': '#FCF3CF', 'noteBorderColor': '#D4AC0D', 'noteTextColor': '#333', 'fontSize': '14px'}}}%%
+sequenceDiagram
+    participant C as 呼叫端模組<br/>(BC/CP/BS/TL)
+    participant S as 中央 DP Server<br/>SRVLB001
+    participant D as SRVDP010<br/>標籤印表機查詢
+    participant DB as 中央 DB
+    participant L as LBSB01<br/>Listener :9200
+    participant Q as Local Queue<br/>(local.db)
+    participant P as GoDEX 印表機<br/>:9100
+
+    C->>+S: Call SRVLB001<br/>bar_type, site_id, data_1~19<br/>(不傳 printer_id)
+
+    S->>S: 1. 取得 Client IP
+
+    S->>+D: 2. Call SRVDP010<br/>(client_ip, bar_type)
+    D->>DB: 查 DP_COMPDEVICE_LABEL<br/>WHERE CLIENT_IP AND BAR_TYPE
+
+    alt 找不到對應
+        D-->>S: found=false
+        S-->>C: {success: false,<br/>message: "資訊設備標籤要先設定"}
+    end
+
+    D-->>-S: found=true, printer_id=PRN-002
+
+    S->>S: 3. 產生 UUID
+    S->>DB: 4. INSERT LB_PRINT_LOG
+    S->>DB: 5. SELECT LB_PRINTER<br/>WHERE PRINTER_ID='PRN-002'
+    DB-->>S: SERVER_IP = 192.168.1.10
+
+    S->>+L: 6. POST http://{SERVER_IP}:9200/api/lb/task<br/>Authorization: Bearer token<br/>Body: {uuid, printer_id, bar_type, data...}
+    L->>Q: 寫入 LB_PRINT_LOG_CACHE
+    L->>Q: INSERT ONLINE_QUEUE (status=0)
+    L->>L: 放 1 個通知進佇列
+    L-->>-S: 7a. 200 OK {success: true, uuid}
+    S-->>-C: {success: true, uuid,<br/>printer_id: "PRN-002"}
+
+    Note over Q,P: LBSB01 使用者操作列印
+
+    Q->>P: EZPL 列印指令 (TCP:9100)
+    P-->>Q: 列印完成
+    Q->>Q: Status 0→1 (終態)<br/>RESULT: v1.1r1W80H35L40T0D8

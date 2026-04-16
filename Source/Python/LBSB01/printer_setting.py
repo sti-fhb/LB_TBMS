@@ -435,7 +435,7 @@ class PrinterSetting(tk.Toplevel):
         self.ent_id.focus_set()
 
     def _on_delete(self) -> None:
-        """刪除：依 Cursor 位置硬刪除。先呼叫 SRVDP018 清子表對應，再呼叫 SRVLB092 刪 LB_PRINTER。"""
+        """刪除：依 Cursor 位置硬刪除。先呼叫 SRVDP020 清子表對應，再呼叫 SRVLB092 刪 LB_PRINTER。"""
         if self._selected_idx is None:
             messagebox.showwarning("刪除", "請先選取要刪除的印表機")
             return
@@ -462,7 +462,7 @@ class PrinterSetting(tk.Toplevel):
         ):
             return
 
-        # 透過 local_db：刪 Local Cache + 離線時排 PENDING_OPS（SRVDP018 + DELETE 順序）
+        # 透過 local_db：刪 Local Cache + 離線時排 PENDING_OPS（SRVDP020 + DELETE 順序）
         online = self._session.online if self._session else False
         ok, msg = self._local_db.remove_printer(site, pid, online=online)
         if not ok:
