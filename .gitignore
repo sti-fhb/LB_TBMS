@@ -1,0 +1,16 @@
+__pycache__/
+
+# PyInstaller 編譯產出
+build/
+dist/
+*.spec
+
+# 執行時自動產生（每台機器各自）
+config.ini
+local.db
+Log/
+app.log
+
+# IDE
+.vscode/
+.idea/

@@ -288,24 +288,23 @@ def _default_sample(code: str, bag_no: str) -> LabelData:
 # ── 對照表 ──
 
 _SAMPLE_BUILDERS: dict[str, callable] = {
-    # CP
+    # CP — 目前啟用
     "CP01": _sample_cp01,
-    "CP02": _sample_cp02,
     "CP11": _sample_cp11,
-    "CP12": _sample_cp12,
     "CP19": _sample_cp19,
-    "CP91": _sample_cp91,
-    "CP92": _sample_cp92,
-    # BC
-    "BC01": _sample_bc,
-    "BC02": _sample_bc,
-    # BS
-    "BS01": _sample_bs01,
-    "BS02": _sample_bs02,
-    "BS03": _sample_bs03,
-    "BS04": _sample_bs04,
-    "BS05": _sample_bs05,
-    "BS07": _sample_bs07,
-    # TL
+    # TL — 目前啟用
     "TL01": _sample_tl01,
+    # ── 以下暫時停用，待各模組需求確認後再啟用 ──
+    # "CP02": _sample_cp02,
+    # "CP12": _sample_cp12,
+    # "CP91": _sample_cp91,
+    # "CP92": _sample_cp92,
+    # "BC01": _sample_bc,
+    # "BC02": _sample_bc,
+    # "BS01": _sample_bs01,
+    # "BS02": _sample_bs02,
+    # "BS03": _sample_bs03,
+    # "BS04": _sample_bs04,
+    # "BS05": _sample_bs05,
+    # "BS07": _sample_bs07,
 }

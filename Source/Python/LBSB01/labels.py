@@ -34,24 +34,24 @@ class LabelDef:
 LABEL_DEFS: list[LabelDef] = [
     # CP — 成分
     LabelDef("CP01", "血品小標籤",             80, 35,  3, "CP"),
-    LabelDef("CP02", "血品小標籤A",            80, 35,  3, "CP"),
+    # LabelDef("CP02", "血品小標籤A",            80, 35,  3, "CP"),
     LabelDef("CP11", "血品核對標籤-合格",       80, 75,  3, "CP"),
-    LabelDef("CP12", "血品核對標籤-特殊標識",   80, 75,  2, "CP"),
+    # LabelDef("CP12", "血品核對標籤-特殊標識",   80, 75,  2, "CP"),
     LabelDef("CP19", "血品核對標籤-不適輸用",   80, 75,  2, "CP"),
-    LabelDef("CP91", "成分藍色籃號",            80, 35,  2, "CP"),
-    LabelDef("CP92", "細菌小標籤",              45, 15,  2, "CP"),
+    # LabelDef("CP91", "成分藍色籃號",            80, 35,  2, "CP"),
+    # LabelDef("CP92", "細菌小標籤",              45, 15,  2, "CP"),
 
     # BC — 檢驗
-    LabelDef("BC01", "檢體小標籤",              45, 15,  2, "BC"),
-    LabelDef("BC02", "187標籤",                 80, 35,  2, "BC"),
+    # LabelDef("BC01", "檢體小標籤",              45, 15,  2, "BC"),
+    # LabelDef("BC02", "187標籤",                 80, 35,  2, "BC"),
 
     # BS — 供應
-    LabelDef("BS01", "運送器材借用標籤",        80, 75,  2, "BS"),
-    LabelDef("BS02", "運送器材條碼",            80, 35,  2, "BS"),
-    LabelDef("BS03", "血品裝箱大標籤",         100, 200, 3, "BS"),
-    LabelDef("BS04", "供應籃號標籤",            80, 75,  2, "BS"),
-    LabelDef("BS05", "供應特殊血品標籤",        80, 75,  2, "BS"),
-    LabelDef("BS07", "血品裝箱小標籤",          80, 35,  2, "BS"),
+    # LabelDef("BS01", "運送器材借用標籤",        80, 75,  2, "BS"),
+    # LabelDef("BS02", "運送器材條碼",            80, 35,  2, "BS"),
+    # LabelDef("BS03", "血品裝箱大標籤",         100, 200, 3, "BS"),
+    # LabelDef("BS04", "供應籃號標籤",            80, 75,  2, "BS"),
+    # LabelDef("BS05", "供應特殊血品標籤",        80, 75,  2, "BS"),
+    # LabelDef("BS07", "血品裝箱小標籤",          80, 35,  2, "BS"),
 
     # TL — 檢驗檢體
     LabelDef("TL01", "檢驗檢體標籤",            45, 15,  2, "TL"),

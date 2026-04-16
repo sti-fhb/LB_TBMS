@@ -7,8 +7,7 @@ SampleData_Print — 標籤測試頁。
 
 from __future__ import annotations
 import logging
-import os
-import traceback
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -17,7 +16,7 @@ from sample_data import LabelData, build_sample
 from bar_l00 import print_l00
 from bar_cp11 import print_cp11
 from bar_cp19 import print_cp19
-from ezpl import GodexPrinter, LinkType
+from ezpl import GodexPrinter
 
 log = logging.getLogger(__name__)
 
@@ -82,17 +81,25 @@ def _print_stub(printer, label_def, data, paper_w, paper_h):
 
 class SampleDataPrint(tk.Toplevel):
 
-    def __init__(self, master: tk.Tk, link_var: tk.StringVar,
-                 ip_var: tk.StringVar, port_var: tk.StringVar) -> None:
+    def __init__(self, master: tk.Tk) -> None:
         super().__init__(master)
         self.title("標籤測試頁 (SampleData_Print)")
         self.geometry("580x580")
         self.resizable(False, False)
 
-        # 共用連線設定（從 Main 傳入）
-        self._link_var = link_var
-        self._ip_var = ip_var
-        self._port_var = port_var
+        # 子視窗 On-Top 且為 Modal
+        self.transient(master)
+        self.grab_set()
+
+        # 從 master (App) 取得 local_db 與 session
+        self._local_db = getattr(master, "local_db", None)
+        self._session = getattr(master, "session", None)
+        self._site_id = self._session.site_id if self._session else "S01"
+
+        # 載入印表機清單（從 Local Cache；離線時保留最後一次可取得的清單）
+        self._printers: list[dict] = []
+        if self._local_db:
+            self._printers = self._local_db.list_printers(self._site_id)
 
         self._build_ui()
 
@@ -149,32 +156,24 @@ class SampleDataPrint(tk.Toplevel):
         ttk.Entry(frame, textvariable=self.var_bag_no, width=30).grid(
             row=row, column=1, sticky="w", pady=(8, 0))
 
-        # ── 連線資訊（顯示，不可改，由 Main 控制）──
+        # ── 印表機選擇（從 Local Cache 查表）──
         row += 1
-        ttk.Label(frame, text="連線方式:").grid(row=row, column=0, sticky="e",
-                                               padx=(0, 8), pady=(8, 0))
-        self.lbl_link = ttk.Label(frame, text="")
-        self.lbl_link.grid(row=row, column=1, sticky="w", pady=(8, 0))
-        self._update_link_display()
+        ttk.Label(frame, text="印表機:").grid(row=row, column=0, sticky="e",
+                                              padx=(0, 8), pady=(8, 0))
+        self.var_printer = tk.StringVar()
+        printer_values = [f"{p['PRINTER_ID']}-{p['PRINTER_NAME']}"
+                          for p in self._printers] if self._printers else ["（無可用印表機）"]
+        self.cmb_printer = ttk.Combobox(frame, textvariable=self.var_printer,
+                                        state="readonly", width=40, values=printer_values)
+        self.cmb_printer.grid(row=row, column=1, sticky="w", pady=(8, 0))
+        if printer_values:
+            self.cmb_printer.current(0)
 
         # ── 按鈕 ──
         btn_frame = ttk.Frame(self)
         btn_frame.pack(pady=12)
-        ttk.Button(btn_frame, text="產生 EZPL 檔案",
-                   command=self._on_generate).pack(side="left", padx=8)
         ttk.Button(btn_frame, text="列印",
                    command=self._on_print).pack(side="left", padx=8)
-
-        # ── 輸出區 ──
-        output_frame = ttk.LabelFrame(self, text="EZPL 指令輸出", padding=8)
-        output_frame.pack(fill="both", expand=True, padx=16, pady=(0, 12))
-        self.txt_output = tk.Text(output_frame, height=10,
-                                  font=("Consolas", 10), state="disabled")
-        scrollbar = ttk.Scrollbar(output_frame, orient="vertical",
-                                  command=self.txt_output.yview)
-        self.txt_output.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        self.txt_output.pack(fill="both", expand=True)
 
         # 初始化
         self._on_label_changed(None)
@@ -198,12 +197,13 @@ class SampleDataPrint(tk.Toplevel):
             self.var_paper_w.set(parts[0].strip())
             self.var_paper_h.set(parts[1].strip())
 
-    def _update_link_display(self) -> None:
-        link = self._link_var.get()
-        if link == "USB":
-            self.lbl_link.config(text="USB（由主畫面設定）")
-        else:
-            self.lbl_link.config(text=f"TCP {self._ip_var.get()}:{self._port_var.get()}（由主畫面設定）")
+    def _get_selected_printer(self) -> dict | None:
+        """取得目前選取的印表機 dict。"""
+        sel = self.var_printer.get()
+        if not sel or sel.startswith("（"):
+            return None
+        pid = sel.split("-", 1)[0]
+        return next((p for p in self._printers if p["PRINTER_ID"] == pid), None)
 
     # ── Helpers ──────────────────────────────────────────────
 
@@ -229,75 +229,105 @@ class SampleDataPrint(tk.Toplevel):
         bag_no = self.var_bag_no.get().strip() or "TW2024050001"
         return build_sample(label_def.code, bag_no)
 
-    def _show_output(self, text: str) -> None:
-        self.txt_output.configure(state="normal")
-        self.txt_output.delete("1.0", "end")
-        self.txt_output.insert("1.0", text)
-        self.txt_output.configure(state="disabled")
-
     # ── Actions ──────────────────────────────────────────────
 
-    def _on_generate(self) -> None:
-        try:
-            data = self._build_data()
-            paper_w, paper_h = self._get_paper_size()
-            label_def = self._get_label_def()
-        except ValueError as e:
-            messagebox.showwarning("輸入錯誤", str(e))
-            return
-
-        printer = GodexPrinter(LinkType.FILE)
-        printer.open()
-        print_label(printer, label_def, data, paper_w, paper_h)
-
-        ezpl = printer.get_commands()
-        filename = f"output_{label_def.code}.ezpl"
-        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-        printer.save(filepath)
-        printer.close()
-
-        self._show_output(ezpl)
-        messagebox.showinfo("完成", f"EZPL 指令已存至:\n{filepath}")
-
     def _on_print(self) -> None:
+        """列印測試資料 — 走與 SRVLB001 相同的機制（POST localhost:9200）。
+
+        將 Task 以 Status=2 送入本機 HTTP Listener，
+        驗證整條列印通道是否暢通：HTTP → Listener → Queue → 印表機。
+        """
         try:
             data = self._build_data()
-            paper_w, paper_h = self._get_paper_size()
+            self._get_paper_size()  # 驗證紙張尺寸為合法數字（實際列印參數取自印表機設定）
             label_def = self._get_label_def()
         except ValueError as e:
             messagebox.showwarning("輸入錯誤", str(e))
             return
 
-        link = LinkType.USB if self._link_var.get() == "USB" else LinkType.TCP
-        ip = self._ip_var.get().strip()
+        printer = self._get_selected_printer()
+        if not printer:
+            messagebox.showwarning("輸入錯誤", "請選擇印表機")
+            return
+
+        # 組 Task payload（與 SRVLB001 Client 端送出格式一致）
+        import uuid as _uuid
+        import socket as _socket
+        task_uuid = str(_uuid.uuid4())
+
+        # 取本機 IP 作為列印者識別（測試頁無實際操作員）
         try:
-            tcp_port = int(self._port_var.get().strip())
-        except ValueError:
-            tcp_port = 9100
+            _s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            _s.connect(("8.8.8.8", 80))
+            local_ip = _s.getsockname()[0]
+            _s.close()
+        except OSError:
+            local_ip = "127.0.0.1"
 
-        # FILE 版供顯示
-        file_printer = GodexPrinter(LinkType.FILE)
-        file_printer.open()
-        print_label(file_printer, label_def, data, paper_w, paper_h)
-        self._show_output(file_printer.get_commands())
-        file_printer.close()
+        payload = {
+            "uuid": task_uuid,
+            "bar_type": label_def.code,
+            "site_id": self._site_id,
+            "printer_id": printer["PRINTER_ID"],
+            "specimen_no": "",
+            "status": 2,  # 測試頁 → 直接進 Offline Queue（R12）
+            "created_user": local_ip,  # 測試頁列印者標記為本機 IP
+        }
+        # 帶入 data_1~data_19
+        for i, field in enumerate(["data_1", "data_2", "data_3", "data_4", "data_5",
+                                    "data_6", "data_7", "data_8", "data_9", "data_10",
+                                    "data_11", "data_12", "data_13", "data_14", "data_15",
+                                    "data_16", "data_17", "data_18", "data_19"], start=1):
+            val = getattr(data, field, None) if hasattr(data, field) else data.extras.get(f"data_{i}", "")
+            payload[field] = val or ""
 
-        # 實際列印
+        # POST 到本機 Task Listener（與 SRVLB001 → Printer Server 相同路徑）
+        import json as _json
+        import urllib.request
+        import urllib.error
+        from task_listener import LISTENER_PORT
+
+        url = f"http://localhost:{LISTENER_PORT}/api/lb/task"
+        token = self._session.token if self._session else ""
+
+        req = urllib.request.Request(
+            url,
+            data=_json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            method="POST",
+        )
+
         try:
-            with GodexPrinter(link) as printer:
-                printer.open(ip=ip, tcp_port=tcp_port)
-                print_label(printer, label_def, data, paper_w, paper_h)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                result = _json.loads(resp.read().decode("utf-8"))
+                if result.get("success"):
+                    messagebox.showinfo("完成",
+                        f"測試列印指令已送出\n\n"
+                        f"標籤: {label_def.display}\n"
+                        f"印表機: {printer['PRINTER_ID']}\n\n"
+                        f"請至主畫面【離線等待重印項目 (Offline Queue)】\n"
+                        f"選取該筆後執行列印")
+                else:
+                    messagebox.showerror("送出失敗", result.get("message", "未知錯誤"))
 
-            mode = "USB (DLL)" if link == LinkType.USB else f"TCP {ip}:{tcp_port}"
-            messagebox.showinfo("完成",
-                f"列印完成（{mode}）\n"
-                f"標籤: {label_def.display}\n"
-                f"尺寸: {paper_w}mm x {paper_h}mm")
-
-        except FileNotFoundError as e:
-            messagebox.showerror("DLL 錯誤", str(e))
-        except ConnectionError as e:
-            messagebox.showerror("連線失敗", str(e))
+        except urllib.error.HTTPError as e:
+            # Listener 有回應但 HTTP 錯誤（4xx/5xx）
+            try:
+                err_body = _json.loads(e.read().decode("utf-8"))
+                msg = err_body.get("message", f"HTTP {e.code}")
+            except Exception:
+                msg = f"HTTP {e.code}"
+            log.error("測試列印 Listener 回應錯誤: %s", msg)
+            messagebox.showerror("Listener 處理錯誤",
+                f"Task Listener 回應錯誤\n\n原因：{msg}")
+        except urllib.error.URLError as e:
+            messagebox.showerror("通道異常",
+                f"無法連線至本機 Task Listener (port {LISTENER_PORT})\n\n"
+                f"原因：{e.reason}\n\n"
+                f"請確認 LBSB01 Task Listener 是否正常運作")
         except Exception as e:
-            log.error("列印失敗:\n%s", traceback.format_exc())
-            messagebox.showerror("列印失敗", f"{e}\n\n詳見 app.log")
+            log.error("測試列印送出失敗: %s", e)
+            messagebox.showerror("送出失敗", str(e))

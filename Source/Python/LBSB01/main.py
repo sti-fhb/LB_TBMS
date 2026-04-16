@@ -22,15 +22,34 @@ from sample_data import LabelData, build_sample
 from sample_data_print import SampleDataPrint, print_label
 from printer_setting import PrinterSetting
 from ezpl import GodexPrinter, LinkType
+from login import authenticate, Session
+from local_db import LocalDB
+from task_listener import start_listener, LISTENER_PORT
+from version import VERSION
+from tray import TrayIcon
 
-# ── Log ──
-logging.basicConfig(
-    filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.log"),
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    encoding="utf-8",
-)
-log = logging.getLogger(__name__)
+# ── Log（LBSB01{YYYYMMDD}.log，存放於主目錄\Log）──
+# 僅記錄 Login/Logout/系統訊息，不記錄操作細節（level=INFO）
+def _init_log() -> logging.Logger:
+    from datetime import date
+    import sys as _sys
+    # PyInstaller onefile: 用 sys.executable 取真正執行檔目錄，不要用 __file__（臨時目錄）
+    if getattr(_sys, "frozen", False):
+        app_dir = os.path.dirname(_sys.executable)
+    else:
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(app_dir, "Log")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"LBSB01{date.today().strftime('%Y%m%d')}.log")
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        encoding="utf-8",
+    )
+    return logging.getLogger(__name__)
+
+log = _init_log()
 
 # ── 藍色色系 ─────────────────────────────────────────────────
 CLR_BG = "#D6E4F0"           # 主背景（淺藍）
@@ -50,12 +69,311 @@ class App(tk.Tk):
 
     def __init__(self) -> None:
         super().__init__()
-        self.title("LBSB01-標籤服務程式")
+        log.info("LBSB01 啟動 %s", VERSION)
+        self.title(f"LBSB01-標籤服務程式 {VERSION}")
         self.geometry("1010x720")
         self.resizable(True, True)
         self.configure(bg=CLR_BG)
+
+        # 視窗 icon（仿 GoDEX 桌上型印表機）
+        self._app_icon = self._make_printer_icon()
+        self.iconphoto(True, self._app_icon)
+
+        # ── APIDP001 自動認證（認證失敗仍可執行：離線模式）──
+        self._show_auth_splash()
+        self.session: Session = authenticate()
+        self._remove_auth_splash()
+
+        # ── LocalDB + Task Listener ──
+        self.local_db = LocalDB()
+        self._http_server = start_listener(self.local_db, self.session, app=self)
+        self._poll_task_events()  # 定時從 queue 取 Listener 通知
+
+        if self.session.online:
+            self._log_msg(f"LOGIN 成功（線上模式）: site={self.session.site_id}")
+            messagebox.showinfo("連線成功",
+                f"已連線至主系統\n站點：{self.session.site_name}")
+        else:
+            self._log_msg(f"LOGIN 離線作業: site={self.session.site_id}")
+            messagebox.showinfo("離線作業",
+                f"目前為離線作業模式\n\n"
+                f"站點：{self.session.site_name}\n\n"
+                f"連線至主系統後將自動切換為線上模式")
+            self._start_reconnect_timer()
+
+        self._log_msg(f"Task Listener 啟動: port={LISTENER_PORT}")
+        self._update_mode_display()
         self._build_menu()
         self._build_ui()
+        self._load_printer_combos()
+
+        # ── System Tray（最小化/關閉時收進右下角通知區）──
+        self._tray = TrayIcon(self, on_show=self._show_window, on_quit=self._quit_app)
+        self._tray.start()
+        self.protocol("WM_DELETE_WINDOW", self._confirm_quit)
+        self.bind("<Unmap>", self._on_unmap)
+        self._user_quit = False
+        self._refresh_queues()  # 啟動時載入現有 Queue
+
+    # ── App Icon（主畫面 Title Bar 與系統匣共用同一張 PIL 圖）──
+    def _make_printer_icon(self) -> tk.PhotoImage:
+        """用 PIL 繪製印表機 icon 並轉為 tk.PhotoImage（與系統匣同源）。"""
+        from PIL import ImageTk
+        from icon import make_app_icon
+        self._pil_icon = make_app_icon(64)  # 保留 ref，避免 GC 回收
+        return ImageTk.PhotoImage(self._pil_icon)
+
+    # ── Mode Display ─────────────────────────────────────────
+    def _update_mode_display(self) -> None:
+        mode = "線上" if self.session.online else "離線"
+        self.title(f"LBSB01-標籤服務程式 {VERSION}  [{self.session.site_name}]  【{mode}】")
+        if hasattr(self, "lbl_status"):
+            if self.session.online:
+                self.lbl_status.config(text="  ● 線上  ", bg="#27AE60")
+            else:
+                self.lbl_status.config(text="  ● 離線  ", bg="#CC0000")
+
+    # ── Reconnect Timer（離線時每 60 秒嘗試重連）──────────────
+    _reconnect_id: str | None = None
+
+    def _start_reconnect_timer(self) -> None:
+        if self._reconnect_id is not None:
+            return  # 已在運行
+        self._reconnect_id = self.after(60_000, self._try_reconnect)
+
+    def _try_reconnect(self) -> None:
+        """每 60 秒嘗試重連主系統；成功後切換線上、同步 Local 暫存。"""
+        self._reconnect_id = None
+        if self.session.online:
+            return  # 已上線，不再重試
+
+        new_session = authenticate()
+        if new_session.online:
+            self.session = new_session
+            self._log_msg(f"重連成功 → 切換為線上模式: site={self.session.site_id}")
+            self._update_mode_display()
+            self._sync_local_to_db()
+        else:
+            # 仍離線 → 60 秒後再試
+            self._reconnect_id = self.after(60_000, self._try_reconnect)
+
+    def _sync_local_to_db(self) -> None:
+        """上線後清除 Local 未更新至主 DB 的資料。
+
+        TODO: 正式實作時掃描本地 Queue 暫存檔，
+        將離線期間累積的資料逐筆 Call SRV 回寫中央 DB。
+        """
+        self._log_msg("開始同步 Local 暫存資料至主 DB ...")
+        # TODO: 掃描 Local Queue 暫存 → 逐筆 Call SRVLB001 / SRVLB011
+        self._log_msg("Local 同步完成（目前為 stub，無實際資料）")
+
+    # ── Task Events Poll（每 200ms 從 queue 取 Listener 通知）──
+    def _poll_task_events(self) -> None:
+        """Main thread 定時 poll task queue；有事件就刷新畫面。"""
+        q = getattr(self, "_task_event_queue", None)
+        if q is not None:
+            try:
+                while True:
+                    q.get_nowait()
+                    self._on_task_received()
+            except Exception:
+                pass
+        self.after(200, self._poll_task_events)
+
+    def _on_task_received(self) -> None:
+        """Task Listener 收到新 Task 時，刷新 Online/Offline Queue 畫面。"""
+        self._add_msg("收到新列印指令")
+        self._refresh_queues()
+
+    def _refresh_queues(self) -> None:
+        """從 local.db 重新載入 Online / Offline Queue ListBox。"""
+        if not hasattr(self, "lst_queue") or not hasattr(self, "lst_wait"):
+            return
+        # Online
+        self.lst_queue.delete(0, "end")
+        for r in self.local_db.list_online_queue():
+            self.lst_queue.insert("end", self._fmt_queue_item(r))
+        # Offline
+        self.lst_wait.delete(0, "end")
+        for r in self.local_db.list_offline_queue():
+            self.lst_wait.insert("end", self._fmt_queue_item(r))
+
+    @staticmethod
+    def _fmt_queue_item(r: dict) -> str:
+        ts = App._fmt_ts(r.get("CREATED_AT") or "")
+        return f"{ts}  {r.get('BAR_TYPE') or '?'}  {r.get('PRINTER_ID') or '?'}  {r.get('SPECIMEN_NO') or ''}"
+
+    @staticmethod
+    def _fmt_ts(iso: str) -> str:
+        """ISO timestamp → 'YYYY-MM-DD HH:MM:SS.fff'（毫秒至千分之一秒）。"""
+        if not iso:
+            return ""
+        # iso 格式如 '2026-04-15T14:30:45.123456' 或 '2026-04-15T14:30:45'
+        s = iso.replace("T", " ")
+        if "." in s:
+            head, frac = s.split(".", 1)
+            frac = (frac + "000")[:3]  # 取前 3 位（毫秒），不足補 0
+            return f"{head}.{frac}"
+        return f"{s}.000"
+
+    # ── Queue 點選 → 明細帶入左側 ──────────────────────────
+    def _on_online_select(self, _event=None) -> None:
+        self._fill_detail(self.lst_queue, self.local_db.list_online_queue(), online=True)
+
+    def _on_offline_select(self, _event=None) -> None:
+        self._fill_detail(self.lst_wait, self.local_db.list_offline_queue(), online=False)
+
+    def _fill_detail(self, listbox: tk.Listbox, queue_list: list[dict], online: bool) -> None:
+        sel = listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if idx >= len(queue_list):
+            return
+        q = queue_list[idx]
+        uuid = q.get("UUID", "")
+        # 從 LB_PRINT_LOG_CACHE 取完整資料
+        row = self.local_db._conn.execute(
+            "SELECT * FROM LB_PRINT_LOG_CACHE WHERE UUID=?", (uuid,)
+        ).fetchone()
+        if not row:
+            return
+        row = dict(row)
+
+        # Online 區填左側 var_sn / var_type / var_count / var_user / var_printer_no / var_uuid
+        # Offline 區填對應的 off_var_* 欄位
+        prefix = "" if online else "off_"
+        self._set_var(f"{prefix}var_sn", self._fmt_ts(row.get("CREATED_AT", "")))
+        self._set_var(f"{prefix}var_type", row.get("BAR_TYPE", ""))
+        self._set_var(f"{prefix}var_user", row.get("CREATED_USER", "") or "")
+        self._set_var(f"{prefix}var_printer_no", row.get("PRINTER_ID", ""))
+        # 顯示標籤中文名（lbl_sname / off_lbl_sname）
+        from labels import LABEL_MAP
+        ld = LABEL_MAP.get(row.get("BAR_TYPE", ""))
+        lbl = getattr(self, f"{prefix}lbl_sname", None)
+        if lbl is not None:
+            lbl.config(text=ld.name if ld else "")
+
+    def _set_var(self, name: str, value: str) -> None:
+        v = getattr(self, name, None)
+        if v is not None:
+            v.set(str(value))
+
+    def _load_printer_combos(self) -> None:
+        """載入站點印表機清單到 Online / Offline 明細區的「指定/變更印表機」下拉。"""
+        printers = self.local_db.list_printers(self.session.site_id)
+        values = [f"{p['PRINTER_ID']}-{p['PRINTER_NAME']}" for p in printers]
+        if hasattr(self, "cmb_printer"):
+            self.cmb_printer["values"] = values
+        if hasattr(self, "off_cmb_printer"):
+            self.off_cmb_printer["values"] = values
+
+    def _override_printer(self, online: bool) -> None:
+        """使用者在明細區下拉變更印表機 → 覆寫該筆 Task 的 PRINTER_ID。"""
+        listbox = self.lst_queue if online else self.lst_wait
+        queue_list = (self.local_db.list_online_queue() if online
+                      else self.local_db.list_offline_queue())
+        sel = listbox.curselection()
+        if not sel or sel[0] >= len(queue_list):
+            return
+        uuid = queue_list[sel[0]].get("UUID", "")
+        cmb = self.cmb_printer if online else self.off_cmb_printer
+        val = cmb.get().strip()
+        if not val:
+            return
+        new_pid = val.split("-", 1)[0]
+        self.local_db.override_task_printer(uuid, new_pid)
+        self._refresh_queues()
+        self._add_msg(f"變更列印項目印表機 → {new_pid}")
+
+    def _on_delete_queue(self, online: bool) -> None:
+        """刪除 Queue 單筆（Online/Offline）。"""
+        listbox = self.lst_queue if online else self.lst_wait
+        queue_list = (self.local_db.list_online_queue() if online
+                      else self.local_db.list_offline_queue())
+        sel = listbox.curselection()
+        if not sel:
+            messagebox.showwarning("刪除", "請先選取一筆列印項目")
+            return
+        idx = sel[0]
+        if idx >= len(queue_list):
+            return
+        uuid = queue_list[idx].get("UUID", "")
+        bar_type = queue_list[idx].get("BAR_TYPE", "")
+        printer_id = queue_list[idx].get("PRINTER_ID", "")
+        if not messagebox.askyesno(
+            "刪除確認",
+            f"確定刪除該筆列印項目？\n\n"
+            f"標籤: {bar_type}\n印表機: {printer_id}",
+            icon="warning",
+        ):
+            return
+        self.local_db.delete_queue_task(uuid, online=online)
+        self._refresh_queues()
+        self._add_msg(f"刪除列印項目: {bar_type} @ {printer_id}")
+
+    # ── System Tray ─────────────────────────────────────────
+    def _confirm_quit(self) -> None:
+        """按 X 或 系統匣「結束程式」→ 確認後才真的退出。"""
+        if messagebox.askyesno(
+            "確認關閉",
+            "確定要關閉 LBSB01 嗎？\n\n"
+            "關閉後無法接收列印指令，\n"
+            "若只是要暫時隱藏畫面，請改用最小化（─）收至系統匣。",
+            icon="warning",
+        ):
+            self._user_quit = True
+            self.destroy()
+
+    def _on_unmap(self, _event=None) -> None:
+        """最小化（─）→ 隱藏視窗到系統匣（不 Prompt）。"""
+        if self.state() == "iconic":
+            self.withdraw()
+            self._add_msg("已最小化至系統匣（右下角圖示可恢復）")
+
+    def _show_window(self) -> None:
+        """從系統匣選單「顯示主畫面」。"""
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def _quit_app(self) -> None:
+        """從系統匣選單「結束程式」→ 走確認流程。"""
+        self._show_window()  # 先恢復畫面才彈 prompt
+        self._confirm_quit()
+
+    # ── Close / Logout ───────────────────────────────────────
+    def destroy(self) -> None:
+        self._log_msg("LOGOUT 程式關閉")
+        if self._reconnect_id is not None:
+            self.after_cancel(self._reconnect_id)
+            self._reconnect_id = None
+        if hasattr(self, "_http_server"):
+            self._http_server.shutdown()
+        if hasattr(self, "_tray"):
+            self._tray.stop()
+        if hasattr(self, "local_db"):
+            self.local_db.close()
+        super().destroy()
+
+    # ── Auth Splash ──────────────────────────────────────────
+    def _show_auth_splash(self) -> None:
+        """顯示認證中提示畫面。"""
+        self._splash = tk.Frame(self, bg=CLR_BG)
+        self._splash.place(relx=0, rely=0, relwidth=1, relheight=1)
+        tk.Label(self._splash, text="正在登入主系統 DB ...",
+                 font=("標楷體", 20, "bold"), bg=CLR_BG, fg=CLR_TITLE_FG).place(
+                     relx=0.5, rely=0.4, anchor="center")
+        tk.Label(self._splash, text="APIDP001-外部系統資料接收介面 認證中",
+                 font=("新細明體", 11), bg=CLR_BG, fg=CLR_ACCENT).place(
+                     relx=0.5, rely=0.5, anchor="center")
+        self.update()
+
+    def _remove_auth_splash(self) -> None:
+        """移除認證提示畫面。"""
+        if hasattr(self, "_splash"):
+            self._splash.destroy()
+            del self._splash
 
     # ── Menu ─────────────────────────────────────────────────
     def _build_menu(self) -> None:
@@ -76,19 +394,18 @@ class App(tk.Tk):
         tk.Label(top, text="LBSB01-標籤服務程式", font=("標楷體", 18, "bold"),
                  bg=CLR_BG, fg=CLR_TITLE_FG).pack(side="left")
 
-        # 連線方式
-        self.var_link = tk.StringVar(value="USB")
-        tk.Radiobutton(top, text="USB", variable=self.var_link, value="USB",
-                       bg=CLR_BG, fg=CLR_TITLE_FG, selectcolor=CLR_BG,
-                       command=self._toggle_ip).pack(side="left", padx=(20, 0))
-        tk.Radiobutton(top, text="IP Print", variable=self.var_link, value="TCP",
-                       bg=CLR_BG, fg=CLR_TITLE_FG, selectcolor=CLR_BG,
-                       command=self._toggle_ip).pack(side="left")
+        # 線上/離線狀態指示
+        if self.session.online:
+            status_text, status_fg, status_bg = "● 線上", "#FFFFFF", "#27AE60"
+        else:
+            status_text, status_fg, status_bg = "● 離線", "#FFFFFF", "#CC0000"
+        self.lbl_status = tk.Label(top, text=f"  {status_text}  ",
+                                   font=("新細明體", 11, "bold"),
+                                   fg=status_fg, bg=status_bg, relief="ridge", padx=6)
+        self.lbl_status.pack(side="left", padx=(12, 0))
 
-        self.var_clear = tk.IntVar(value=1)
-        tk.Checkbutton(top, text="印出後清除", variable=self.var_clear,
-                       bg=CLR_BG, fg=CLR_TITLE_FG, selectcolor=CLR_BG,
-                       font=("新細明體", 9)).pack(side="left", padx=(10, 0))
+        # 連線方式由所選印表機決定，不在此選擇（預設值供其他視窗共用）
+        self.var_link = tk.StringVar(value="USB")
 
         self.var_auto = tk.IntVar(value=0)
         tk.Checkbutton(top, text="Auto自動依序列印", variable=self.var_auto,
@@ -113,32 +430,41 @@ class App(tk.Tk):
         fields = [
             ("時間序:", "var_sn", 30, True),
             ("條碼種類:", "var_type", 8, True),
-            ("待列印張數:", "var_count", 10, True),
             ("列印者:", "var_user", 15, False),
             ("印表機編號:", "var_printer_no", 10, False),
-            ("UUID:", "var_uuid", 25, True),
         ]
+        self.lbl_sname = None  # 條碼種類旁的中文名 label，於 var_type row 內建立
         for i, (lbl_text, var_name, width, disabled) in enumerate(fields):
             tk.Label(frm_detail, text=lbl_text, bg=CLR_ONLINE_BG, fg=CLR_ONLINE_FG,
                      font=("新細明體", 9)).grid(row=i, column=0, sticky="e", padx=(0, 4), pady=2)
             sv = tk.StringVar()
             setattr(self, var_name, sv)
             state = "disabled" if disabled else "normal"
-            tk.Entry(frm_detail, textvariable=sv, width=width, state=state,
-                     font=("新細明體", 9)).grid(row=i, column=1, sticky="w", pady=2)
 
-        self.lbl_sname = tk.Label(frm_detail, text="", bg=CLR_ONLINE_BG, fg=CLR_ACCENT,
-                                  font=("標楷體", 11, "bold"))
-        self.lbl_sname.grid(row=1, column=2, sticky="w", padx=(4, 0))
+            if var_name == "var_type":
+                # 條碼種類：Entry + 中文名 Label 合併在 column 1（避免中文名撐寬欄位）
+                sub = tk.Frame(frm_detail, bg=CLR_ONLINE_BG)
+                sub.grid(row=i, column=1, sticky="w", pady=2)
+                tk.Entry(sub, textvariable=sv, width=width, state=state,
+                         font=("新細明體", 9)).pack(side="left")
+                self.lbl_sname = tk.Label(sub, text="", bg=CLR_ONLINE_BG, fg=CLR_ACCENT,
+                                          font=("標楷體", 11, "bold"))
+                self.lbl_sname.pack(side="left", padx=(4, 0))
+            else:
+                tk.Entry(frm_detail, textvariable=sv, width=width, state=state,
+                         font=("新細明體", 9)).grid(row=i, column=1, sticky="w", pady=2)
 
         r = len(fields)
         tk.Label(frm_detail, text="指定印表機:", bg=CLR_ONLINE_BG, fg=CLR_ONLINE_FG,
                  font=("新細明體", 10)).grid(row=r, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.var_printer = tk.StringVar(value="USB")
-        self.cmb_printer = ttk.Combobox(frm_detail, textvariable=self.var_printer,
-                                        width=25, font=("新細明體", 11))
-        self.cmb_printer["values"] = ["USB"]
-        self.cmb_printer.grid(row=r, column=1, columnspan=2, sticky="w", pady=4)
+        sub_p = tk.Frame(frm_detail, bg=CLR_ONLINE_BG)
+        sub_p.grid(row=r, column=1, columnspan=2, sticky="w", pady=4)
+        self.var_printer = tk.StringVar()
+        self.cmb_printer = ttk.Combobox(sub_p, textvariable=self.var_printer,
+                                        width=22, font=("新細明體", 11), state="readonly")
+        self.cmb_printer.pack(side="left")
+        tk.Button(sub_p, text="存檔", font=("新細明體", 9), bg=CLR_BTN_BG, fg=CLR_BTN_FG,
+                  command=lambda: self._override_printer(online=True)).pack(side="left", padx=(4, 0))
 
         # --- 右: 線上排隊列印項目 (Online Queue) ---
         frm_queue = tk.LabelFrame(row1, text="線上排隊列印項目 (Online Queue)",
@@ -151,12 +477,12 @@ class App(tk.Tk):
         tk.Label(btn_row, text="點二下可將線上項目移至下面離線",
                  fg=CLR_ACCENT, bg=CLR_ONLINE_BG, font=("新細明體", 8)).pack(side="left")
         tk.Button(btn_row, text="刪除單筆", font=("新細明體", 9),
-                  command=lambda: None).pack(side="right", padx=2)
-        tk.Button(btn_row, text="更新資料", font=("新細明體", 9),
-                  command=lambda: None).pack(side="right", padx=2)
+                  command=lambda: self._on_delete_queue(online=True)).pack(side="right", padx=2)
+        # 「更新資料」已移除：Queue 異動時自動刷新畫面
 
-        self.lst_queue = tk.Listbox(frm_queue, font=("新細明體", 10), height=6)
+        self.lst_queue = tk.Listbox(frm_queue, font=("新細明體", 12), height=6)
         self.lst_queue.pack(fill="both", expand=True, pady=(4, 0))
+        self.lst_queue.bind("<<ListboxSelect>>", self._on_online_select)
 
         self.btn_print_online = tk.Button(
             frm_queue, text="  列印線上指定項目  ",
@@ -232,32 +558,40 @@ class App(tk.Tk):
         off_fields = [
             ("時間序:", "off_var_sn", 30, True),
             ("條碼種類:", "off_var_type", 8, True),
-            ("待列印張數:", "off_var_count", 10, True),
             ("列印者:", "off_var_user", 15, False),
             ("印表機編號:", "off_var_printer_no", 10, False),
-            ("UUID:", "off_var_uuid", 25, True),
         ]
+        self.off_lbl_sname = None
         for i, (lbl_text, var_name, width, disabled) in enumerate(off_fields):
             tk.Label(frm_offline, text=lbl_text, bg=CLR_OFFLINE_BG, fg=CLR_OFFLINE_FG,
                      font=("新細明體", 9)).grid(row=i, column=0, sticky="e", padx=(0, 4), pady=2)
             sv = tk.StringVar()
             setattr(self, var_name, sv)
             state = "disabled" if disabled else "normal"
-            tk.Entry(frm_offline, textvariable=sv, width=width, state=state,
-                     font=("新細明體", 9)).grid(row=i, column=1, sticky="w", pady=2)
 
-        self.off_lbl_sname = tk.Label(frm_offline, text="", bg=CLR_OFFLINE_BG, fg="#FFD700",
-                                      font=("標楷體", 11, "bold"))
-        self.off_lbl_sname.grid(row=1, column=2, sticky="w", padx=(4, 0))
+            if var_name == "off_var_type":
+                sub = tk.Frame(frm_offline, bg=CLR_OFFLINE_BG)
+                sub.grid(row=i, column=1, sticky="w", pady=2)
+                tk.Entry(sub, textvariable=sv, width=width, state=state,
+                         font=("新細明體", 9)).pack(side="left")
+                self.off_lbl_sname = tk.Label(sub, text="", bg=CLR_OFFLINE_BG, fg="#FFD700",
+                                              font=("標楷體", 11, "bold"))
+                self.off_lbl_sname.pack(side="left", padx=(4, 0))
+            else:
+                tk.Entry(frm_offline, textvariable=sv, width=width, state=state,
+                         font=("新細明體", 9)).grid(row=i, column=1, sticky="w", pady=2)
 
         r2 = len(off_fields)
         tk.Label(frm_offline, text="變更待印印表機:", bg=CLR_OFFLINE_BG, fg="#FFD700",
                  font=("新細明體", 10)).grid(row=r2, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.off_var_printer = tk.StringVar(value="USB")
-        self.off_cmb_printer = ttk.Combobox(frm_offline, textvariable=self.off_var_printer,
-                                            width=25, font=("新細明體", 11))
-        self.off_cmb_printer["values"] = ["USB"]
-        self.off_cmb_printer.grid(row=r2, column=1, columnspan=2, sticky="w", pady=4)
+        sub_op = tk.Frame(frm_offline, bg=CLR_OFFLINE_BG)
+        sub_op.grid(row=r2, column=1, columnspan=2, sticky="w", pady=4)
+        self.off_var_printer = tk.StringVar()
+        self.off_cmb_printer = ttk.Combobox(sub_op, textvariable=self.off_var_printer,
+                                            width=22, font=("新細明體", 11), state="readonly")
+        self.off_cmb_printer.pack(side="left")
+        tk.Button(sub_op, text="存檔", font=("新細明體", 9), bg=CLR_BTN_BG, fg=CLR_BTN_FG,
+                  command=lambda: self._override_printer(online=False)).pack(side="left", padx=(4, 0))
 
         # --- 右: 離線等待重印項目 (Offline Queue) ---
         frm_wait = tk.LabelFrame(row3, text="離線等待重印項目 (Offline Queue)",
@@ -269,11 +603,13 @@ class App(tk.Tk):
         btn_row2.pack(fill="x")
         tk.Label(btn_row2, text="點二下可將離線項目移至上面進行上線排隊列印",
                  fg="#FFD700", bg=CLR_OFFLINE_BG, font=("新細明體", 8)).pack(side="left")
-        tk.Button(btn_row2, text="刪除單筆", font=("新細明體", 9)).pack(side="right", padx=2)
-        tk.Button(btn_row2, text="更新資料", font=("新細明體", 9)).pack(side="right", padx=2)
+        tk.Button(btn_row2, text="刪除單筆", font=("新細明體", 9),
+                  command=lambda: self._on_delete_queue(online=False)).pack(side="right", padx=2)
+        # 「更新資料」已移除：Queue 異動時自動刷新畫面
 
-        self.lst_wait = tk.Listbox(frm_wait, font=("新細明體", 10), height=5)
+        self.lst_wait = tk.Listbox(frm_wait, font=("新細明體", 12), height=5)
         self.lst_wait.pack(fill="both", expand=True, pady=(4, 0))
+        self.lst_wait.bind("<<ListboxSelect>>", self._on_offline_select)
 
         # ====== Row 4: 訊息 + 測試列印 ======
         row4 = tk.Frame(self, bg=CLR_BG)
@@ -294,20 +630,9 @@ class App(tk.Tk):
         tk.Button(frm_test, text="列印測試資料", font=("新細明體", 9),
                   command=self._on_test_print).pack(side="left")
 
-        # ====== Row 5: 可用標籤 ======
-        self.lbl_tag = tk.Label(self, text="", font=("新細明體", 8),
-                                bg=CLR_BG, fg=CLR_ACCENT, anchor="w")
-        self.lbl_tag.pack(fill="x", padx=6, pady=(0, 2))
-        self._update_tag_label()
-
-        # ── IP 設定（隱藏，TCP 模式才顯示）──
-        self.frm_ip = tk.Frame(self, bg=CLR_BG)
-        tk.Label(self.frm_ip, text="IP:", bg=CLR_BG, fg=CLR_TITLE_FG).pack(side="left")
+        # IP/Port 由所選印表機決定（預設值供其他視窗共用）
         self.var_ip = tk.StringVar(value="192.168.1.100")
-        tk.Entry(self.frm_ip, textvariable=self.var_ip, width=15).pack(side="left")
-        tk.Label(self.frm_ip, text="Port:", bg=CLR_BG, fg=CLR_TITLE_FG).pack(side="left", padx=(8, 0))
         self.var_port = tk.StringVar(value="9100")
-        tk.Entry(self.frm_ip, textvariable=self.var_port, width=6).pack(side="left")
 
         # 初始化
         self._on_label_changed(None)
@@ -316,11 +641,6 @@ class App(tk.Tk):
     def _update_clock(self) -> None:
         self.lbl_time.config(text=time.strftime("%Y/%m/%d %H:%M:%S"))
         self.after(1000, self._update_clock)
-
-    # ── Tag Label ────────────────────────────────────────────
-    def _update_tag_label(self) -> None:
-        tags = ", ".join(d.display for d in LABEL_DEFS)
-        self.lbl_tag.config(text=f"可用標籤: {tags}")
 
     # ── Events ───────────────────────────────────────────────
     def _on_label_changed(self, _event) -> None:
@@ -342,12 +662,6 @@ class App(tk.Tk):
             self.var_w.set(parts[0].strip())
             self.var_h.set(parts[1].strip())
 
-    def _toggle_ip(self) -> None:
-        if self.var_link.get() == "TCP":
-            self.frm_ip.pack(fill="x", padx=6, pady=2, before=self.lbl_tag)
-        else:
-            self.frm_ip.pack_forget()
-
     # ── Helpers ──────────────────────────────────────────────
     def _get_label_def(self) -> LabelDef | None:
         display = self.var_label.get()
@@ -365,9 +679,16 @@ class App(tk.Tk):
         return w, h
 
     def _add_msg(self, text: str) -> None:
+        """純 UI 訊息（不寫 log）。"""
         self.lst_msg.insert(0, f"[{time.strftime('%H:%M:%S')}] {text}")
         if self.lst_msg.size() > 100:
             self.lst_msg.delete(100, "end")
+
+    def _log_msg(self, text: str) -> None:
+        """系統訊息：同時寫 Log + 訊息區。"""
+        log.info(text)
+        if hasattr(self, "lst_msg"):
+            self._add_msg(text)
 
     # ── Actions ──────────────────────────────────────────────
     def _on_print(self) -> None:
@@ -408,12 +729,14 @@ class App(tk.Tk):
             messagebox.showerror("列印失敗", f"{e}\n\n詳見 app.log")
 
     def _open_printer_setting(self) -> None:
-        """Menu → 設定 → 標籤印表機設定。"""
-        PrinterSetting(self)
+        """Menu → 設定 → 標籤印表機設定。關閉後重新載入印表機下拉。"""
+        ps = PrinterSetting(self)
+        self.wait_window(ps)
+        self._load_printer_combos()
 
     def _open_sample_data_print(self) -> None:
         """Menu → 標籤測試頁。"""
-        SampleDataPrint(self, self.var_link, self.var_ip, self.var_port)
+        SampleDataPrint(self)
 
     def _on_test_print(self) -> None:
         """列印測試資料 — 移植 VB6 PrintTest + Bar_ANY 邏輯。
@@ -497,5 +820,21 @@ class App(tk.Tk):
             messagebox.showerror("測試列印失敗", f"{e}\n\n詳見 app.log")
 
 
+def _ensure_single_instance() -> None:
+    """用 port 9200 是否可綁定來判定是否已有實例在跑；已存在則靜默退出。
+
+    （不用 tasklist 因 PyInstaller onefile 會顯示 bootloader + 主程序兩個 LBSB01.exe）
+    """
+    import socket as _sk
+    import sys as _sys
+    s = _sk.socket(_sk.AF_INET, _sk.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", LISTENER_PORT))
+        s.close()
+    except OSError:
+        _sys.exit(0)  # port 被占用 → 已有另一支 LBSB01 在跑
+
+
 if __name__ == "__main__":
+    _ensure_single_instance()
     App().mainloop()
