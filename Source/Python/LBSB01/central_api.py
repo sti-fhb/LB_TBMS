@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 def _derive_base_url(api_url: str) -> str:
     """從 APIDP001 URL 推導 API Base URL。
 
-    例: http://192.168.1.100:8000/api/ext/auth/token → http://192.168.1.100:8000
+    例: http://192.168.1.100:8000/api/external/auth/token → http://192.168.1.100:8000
     """
     parsed = urlparse(api_url)
     return f"{parsed.scheme}://{parsed.netloc}"

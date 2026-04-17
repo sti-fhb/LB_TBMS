@@ -141,6 +141,9 @@ site_name = 總院捐血中心
 | `CENTRAL_API_BASE` | 中央 API Base URL（例：`http://192.168.1.100:8000`） |
 | `HEALTH_CHECK_PATH` | 健康檢查路徑（例：`/api/health`，待主專案定義） |
 
+> ⚠ **URL 對齊規則**：未來任何 URL 變更（包括健康檢查、APIDP/SRV 路徑等），一律**以主專案 infra 文件為準**（`c:\TSBMS\TBMS\docs\specs\dp\contracts\api-contracts.md` 等）。
+> 不得自行決定路徑規則，避免與主專案不一致。
+
 > 程式啟動時若 config.ini 不存在，會自動建立預設 `[site]`。
 
 ---

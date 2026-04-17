@@ -44,7 +44,7 @@ _DEFAULTS = {
         "site_name": "總院捐血中心",
     },
     "api": {
-        "url": "http://localhost:8000/api/ext/auth/token",
+        "url": "http://localhost:8000/api/external/auth/token",
     },
     "token": {
         "value": "",
@@ -155,7 +155,7 @@ def _apidp001_get_token(
 ) -> tuple[bool, dict]:
     """APIDP001-外部系統資料接收介面。
 
-    POST /api/ext/auth/token
+    POST /api/external/auth/token
     Body: { "code": "LB_PRINT", "passcode": "stark123" }
 
     實際嘗試 HTTP 連線中央 DP；連不上則回傳失敗（程式進入離線模式）。
