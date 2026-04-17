@@ -1,14 +1,14 @@
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D6E4F0', 'primaryTextColor': '#003366', 'primaryBorderColor': '#1A5276', 'lineColor': '#2E86C1', 'fontSize': '13px'}}}%%
 flowchart TB
-    START(["LBSB01 啟動"]) --> AUTH["authenticate()<br/>APIDP001 認證"]
-    AUTH --> CHECK{認證成功?}
+    START(["LBSB01 啟動"]) --> AUTH["authenticate()<br/>載入 HARDCODED_TOKEN<br/>健康檢查 GET /api/health"]
+    AUTH --> CHECK{網路可達?}
 
     CHECK -->|YES| ONLINE["<b>線上模式</b><br/>session.online = True<br/>標題【線上】🟢"]
     CHECK -->|NO| OFFLINE["<b>離線模式</b><br/>session.online = False<br/>標題【離線】🔴"]
 
     OFFLINE --> TIMER["啟動重連計時器<br/>every 60 秒"]
-    TIMER -->|"60s 後"| RETRY["authenticate()<br/>重新認證"]
-    RETRY --> RECHECK{認證成功?}
+    TIMER -->|"60s 後"| RETRY["健康檢查<br/>GET /api/health"]
+    RETRY --> RECHECK{網路可達?}
 
     RECHECK -->|NO| TIMER
     RECHECK -->|YES| SWITCH["切換為線上模式<br/>更新標題 + 狀態燈"]

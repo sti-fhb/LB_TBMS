@@ -30,7 +30,7 @@
 _LB/
 ├── Source/Python/LBSB01/        ← Python 原始碼
 │   ├── main.py                  ← 程式進入點（App 主視窗）
-│   ├── login.py                 ← 認證模組（APIDP001 自動認證 + config.ini）
+│   ├── login.py                 ← 認證模組（TOKEN + 中央 URL 硬寫常數 + 健康檢查）
 │   ├── local_db.py              ← 本地 SQLite 封裝（Cache + Queue + PENDING_OPS）
 │   ├── printer_setting.py       ← 印表機設定頁面
 │   ├── sample_data_print.py     ← 標籤測試頁
@@ -97,18 +97,18 @@ cd Source/Python/LBSB01
 python main.py
 ```
 
-首次執行會自動建立 `config.ini`（預設值）。修改 `[site]` 與 `[api]` 後重啟即可。
+首次執行會自動建立 `config.ini`（預設值）。修改 `[site]` 後重啟即可。
 
 ### 2.4 開發用離線模式
 
-APIDP001 認證端點尚未部署時，程式會自動進入**離線模式**（`session.online = False`）：
+網路不通或中央服務未啟動時，健康檢查失敗 → 程式自動進入**離線模式**（`session.online = False`）：
 
 - 印表機設定 CRUD → 寫 Local Cache + 排 PENDING_OPS
 - 標籤測試頁 → POST localhost:9200 走本機迴路（正常可用）
 - Queue 操作（移動/刪除/列印）→ 操作 local.db
 - 跨模組 SRV（SRVDP020）→ 排入 PENDING_OPS，上線後 replay
 
-> 離線模式讓開發者不需中央服務即可開發 UI 與流程邏輯。正式上線時連通 APIDP001 即自動切換為線上模式。
+> 離線模式讓開發者不需中央服務即可開發 UI 與流程邏輯。中央恢復連線後健康檢查成功即自動切換為線上模式。
 
 ---
 
@@ -116,32 +116,32 @@ APIDP001 認證端點尚未部署時，程式會自動進入**離線模式**（`
 
 設定檔位於**執行檔同目錄**，INI 格式（UTF-8）。
 
+> **設計變更（2026-04-17）**：TOKEN 與中央 API Base URL 已改為**硬寫於 `login.py` 常數**，不再寫入 config.ini。
+> config.ini 只保留 `[site]`。
+
 ```ini
 ; LBSB01 標籤服務程式設定檔
-; [site] 與 [api] 由管理者設定；[token] 由程式自動回寫
+; [site] 由管理者依站點設定
 
 [site]
 site_id = S01
 site_name = 總院捐血中心
-
-[api]
-url = http://192.168.1.100:8000/api/ext/auth/token
-
-[token]
-; 以下由程式認證後自動回寫，不需手動編輯
-value =
-expires_in = 3600
 ```
 
 | Section | Key | 說明 | 維護者 |
 |---------|-----|------|--------|
 | `[site]` | `site_id` | 站點代碼（須與中央 DP 一致） | 管理者 |
 | `[site]` | `site_name` | 站點中文名稱 | 管理者 |
-| `[api]` | `url` | APIDP001 認證端點 URL | 管理者 |
-| `[token]` | `value` | TOKEN（程式自動回寫） | 程式 |
-| `[token]` | `expires_in` | TOKEN 有效秒數 | 程式 |
 
-> 程式啟動時若 config.ini 不存在，會自動建立預設檔。缺漏的 key 也會自動補齊。
+### 程式內硬寫常數（login.py）
+
+| 常數 | 說明 |
+|------|------|
+| `HARDCODED_TOKEN` | 供 Task Listener 驗證 + 主動呼叫中央時帶入 Bearer |
+| `CENTRAL_API_BASE` | 中央 API Base URL（例：`http://192.168.1.100:8000`） |
+| `HEALTH_CHECK_PATH` | 健康檢查路徑（例：`/api/health`，待主專案定義） |
+
+> 程式啟動時若 config.ini 不存在，會自動建立預設 `[site]`。
 
 ---
 
@@ -150,22 +150,23 @@ expires_in = 3600
 ```
 main.py 啟動
   │
-  ├─ 顯示 Splash：「正在登入主系統 DB ...」
+  ├─ 顯示 Splash：「正在檢查主系統連線 ...」
   │
   ├─ login.authenticate()
-  │    ├─ 讀 config.ini（[site] + [api]）
-  │    ├─ Call APIDP001（POST /api/ext/auth/token）
-  │    │    Body: { code: "LB_PRINT", passcode: "stark123" }
+  │    ├─ 讀 config.ini（[site]）
+  │    ├─ 載入 HARDCODED_TOKEN（login.py 常數）
+  │    ├─ 健康檢查：GET {CENTRAL_API_BASE}{HEALTH_CHECK_PATH}
+  │    │    Header: Authorization: Bearer <HARDCODED_TOKEN>
   │    │
-  │    ├─ 成功 → Session(online=True)，token 回寫 config.ini
-  │    └─ 失敗 → Session(online=False, error_message=原因)
+  │    ├─ 網路通 → Session(online=True)
+  │    └─ 網路不通 → Session(online=False, error_message=原因)
   │
   ├─ 移除 Splash
   │
-  ├─ online=True  → 顯示「認證成功」+ 標題【線上】（綠色）
-  └─ online=False → 顯示「認證失敗（離線模式）」+ 標題【離線】（紅色）
+  ├─ online=True  → 顯示「連線成功」+ 標題【線上】（綠色）
+  └─ online=False → 顯示「離線作業」+ 標題【離線】（紅色）
        │
-       └─ 程式仍可執行（僅本地 Queue 功能可用）
+       └─ 程式仍可執行（僅本地 Queue 功能可用，異動排入 PENDING_OPS）
 ```
 
 ### Session 結構
@@ -175,20 +176,21 @@ main.py 啟動
 class Session:
     site_id: str          # 站點代碼（from config.ini）
     site_name: str        # 站點名稱
-    token: str            # APIDP001 TOKEN（離線時為空）
-    expires_in: int       # TOKEN 有效秒數
-    online: bool          # True=線上 / False=離線
-    error_message: str    # 失敗原因（online=True 時為空）
+    token: str            # from login.HARDCODED_TOKEN（永久有效）
+    online: bool          # True=線上 / False=離線（依健康檢查結果）
+    error_message: str    # 連線失敗原因（online=True 時為空）
 ```
 
-### 認證參數
+### 認證機制
 
 | 項目 | 值 | 來源 |
 |------|-----|------|
-| CODE | `LB_PRINT` | login.py 常數 |
-| PASSCODE | `stark123` | login.py 常數 |
-| EA 對應 | `{1BEF51C7-CD73-44e6-8D3B-CD134B3D388D}` | 標籤印表機服務登入 |
-| DP 參數表 | `DP_PARAM_D` WHERE `PARAM_ID='DP_EXT_API_KEY'` AND `PARAM_KEY='LB_PRINT'` | 中央 DB |
+| TOKEN | 硬寫字串 | `login.HARDCODED_TOKEN` |
+| 中央 Base URL | 硬寫字串 | `login.CENTRAL_API_BASE` |
+| 健康檢查路徑 | 硬寫字串 | `login.HEALTH_CHECK_PATH`（待主專案定義） |
+
+> **變更紀錄（2026-04-17）**：原設計呼叫 APIDP001 取得動態 TOKEN，現改為 TOKEN 永久有效、硬寫於程式。
+> TOKEN 由管理者人工配發給 LBSB01 開發者，編譯進程式碼。
 
 ---
 
@@ -208,18 +210,19 @@ class Session:
 ```
 LBSB01 (Python)
   │
-  ├─ APIDP001（啟動認證取 TOKEN）
+  ├─ TOKEN + 中央 URL 硬寫於 login.py 常數
+  ├─ 健康檢查（GET /api/health）判定線上/離線
   │
   ├─ local_db.py（本地 SQLite）
   │   ├─ LB_PRINTER_CACHE      ← 自家 Table 直接讀寫
   │   ├─ LB_PRINT_LOG_CACHE    ← 自家 Table 直接讀寫
   │   ├─ ONLINE_QUEUE / OFFLINE_QUEUE
-  │   └─ PENDING_OPS           ← 離線暫存佇列
+  │   └─ PENDING_OPS           ← 同步操作佇列
   │
-  ├─ 線上時：直接寫中央 LB Table + Call 跨模組 SRV
-  └─ 離線時：寫 Local Cache + 排入 PENDING_OPS
+  ├─ 寫入一律先寫 Local Cache + 排 PENDING_OPS
+  └─ 背景同步 Timer（每 30 秒）→ replay PENDING_OPS
                                      │
-              上線後 replay ──────────┘
+        主動呼叫中央（帶 Bearer TOKEN）┘
 ```
 
 ### SRV 清單（僅保留對外服務 + 跨模組呼叫）
@@ -227,10 +230,13 @@ LBSB01 (Python)
 | 編碼 | 名稱 | 類別 | 說明 |
 |------|------|------|------|
 | **SRVLB001** | 標籤列印通用API | 對外提供 | 其他模組（BC/CP/BS/TL）Call LB 送列印指令 |
-| **APIDP001** | 外部系統資料接收介面 | 跨模組呼叫 | 啟動認證（CODE=LB_PRINT） |
+| **SRVDP010** | 標籤印表機查詢服務 | 由 SRVLB001 呼叫 | LB 不直接呼叫 |
 | **SRVDP020** | 刪除元件設備標籤對應 | 跨模組呼叫 | 刪除印表機時先清 DP 子表 |
+| **健康檢查端點** | `GET /api/health`（待主專案定義） | 跨模組呼叫 | 判定線上狀態 |
 
-> 自家 Table 的 CRUD（新增/查詢/更新/刪除印表機、LOG 更新）不需 SRV，由 `local_db.py` 直接操作。
+> 自家 Table 的 CRUD（新增/查詢/更新/刪除印表機、LOG 更新）走 Local Cache + PENDING_OPS，背景同步 Timer replay 至中央。
+>
+> **已棄用**：APIDP001（TOKEN 改硬寫，不再呼叫）。
 
 ---
 
@@ -413,8 +419,10 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 
 | 編碼 | 名稱 | 呼叫場景 | 離線處理 |
 |------|------|---------|---------|
-| **APIDP001** | 外部系統資料接收介面 | 啟動認證 + 60 秒重連 | 認證失敗 → 離線模式 |
+| **健康檢查端點** | `GET /api/health`（待主專案定義） | 啟動時 + 每 60 秒 | 失敗 → 離線模式 |
 | **SRVDP020** | 刪除元件設備標籤對應 | 刪除印表機時 | 排入 PENDING_OPS |
+
+> **已棄用**：APIDP001-外部系統資料接收介面（TOKEN 改硬寫於 `login.py`，不再呼叫）。
 
 ### 自家模組直接操作（不需 SRV）
 
@@ -429,44 +437,48 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 
 ## 8. API 呼叫模式
 
-本節說明 LBSB01 涉及的三種 API 呼叫模式：**認證呼叫**、**被動接收**、**跨模組 SRV 呼叫**。
+本節說明 LBSB01 涉及的三種 API 呼叫模式：**健康檢查**、**被動接收**、**跨模組 SRV 呼叫**。
 
-### 8.1 APIDP001 認證呼叫（LBSB01 → 中央）
+### 8.1 健康檢查（LBSB01 → 中央）
 
-LBSB01 啟動時主動呼叫中央 APIDP001 取得 TOKEN，用於後續 Task Listener 驗證身份：
+LBSB01 啟動時及每 60 秒 ping 中央健康檢查端點，判定 `session.online`：
 
 ```
 LBSB01                                     中央 DP Server
 ──────                                     ──────────────
-POST {config.ini [api] url}
-  Content-Type: application/json
-  Body: {
-    "code": "LB_PRINT",           ← 固定值（login.py 常數）
-    "passcode": "stark123"         ← 固定值（login.py 常數）
-  }
-                                   ──→ 查 DP_EXT_API_KEY
-                                       WHERE CODE='LB_PRINT'
-                                       AND PASSCODE='stark123'
+GET {CENTRAL_API_BASE}{HEALTH_CHECK_PATH}
+  Header: Authorization: Bearer <HARDCODED_TOKEN>
+                                   ──→ 驗證 TOKEN
+                                       檢查中央服務存活
                                    ←── 200 OK
-  Response: {
-    "token": "eyJhbG...",          → 存入 session.token + config.ini [token]
-    "expires_in": 3600,            → TOKEN 有效秒數
-    "token_type": "Bearer"
-  }
+
+[網路可達] → session.online = True
+[逾時 / 4xx / 5xx] → session.online = False
 ```
 
 **呼叫時機**：
 
 | 時機 | 說明 |
 |------|------|
-| 程式啟動 | Splash 畫面中自動呼叫 |
+| 程式啟動 | Splash 畫面中自動執行 |
 | 重連計時器 | 離線時每 60 秒重試 |
-| TOKEN 過期 | 需重新認證（未實作自動續約） |
+| 背景同步 Timer | 線上時每 30 秒 replay PENDING_OPS 前不主動 ping |
+
+**TOKEN 與 URL 來源**：
+
+| 項目 | 來源 | 說明 |
+|------|------|------|
+| TOKEN | `login.HARDCODED_TOKEN` | 硬寫於程式，永久有效 |
+| 中央 Base URL | `login.CENTRAL_API_BASE` | 硬寫於程式 |
+| 健康檢查路徑 | `login.HEALTH_CHECK_PATH` | 硬寫於程式（待主專案定義） |
 
 **失敗處理**：
 - 連線逾時 / 拒絕 → `session.online = False`，進入離線模式
-- HTTP 4xx/5xx → 同上，error_message 記錄原因
+- HTTP 4xx → TOKEN 可能失效（罕見，因 TOKEN 永久有效），記錄錯誤
 - 離線模式下程式仍可正常運作（見 Section 6.3）
+
+> **變更紀錄（2026-04-17）**：原設計呼叫 **APIDP001-外部系統資料接收介面** 取得動態 TOKEN。
+> 改為 TOKEN 永久有效、硬寫於程式後，APIDP001 不再被 LB 呼叫。
 
 ### 8.2 Task Listener 被動接收（中央 → LBSB01）
 
@@ -532,11 +544,11 @@ LBSB01                                     中央 DP Server
 
 | 模式 | 方向 | 觸發 | 離線處理 | 範例 |
 |------|------|------|---------|------|
-| 認證呼叫 | LBSB01 → 中央 | 啟動 / 重連 | 認證失敗→離線模式 | APIDP001 |
+| 健康檢查 | LBSB01 → 中央 | 啟動 / 每 60 秒 | 網路不通→離線模式 | GET /api/health |
 | 被動接收 | 中央 → LBSB01 | 中央 SRVLB001 轉發 | Listener 仍運行，但中央不可達 | Task Listener :9200 |
 | 本機迴路 | LBSB01 → LBSB01 | 測試頁送件 | 正常可用（localhost） | POST localhost:9200 |
 | 跨模組 SRV | LBSB01 → 中央 | 使用者操作 | 排入 PENDING_OPS | SRVDP020 |
-| 自家 Table | LBSB01 → local.db | 使用者操作 | 直接寫 Local Cache | LB_PRINTER, LB_PRINT_LOG |
+| 自家 Table | LBSB01 → local.db + 中央同步 | 使用者操作 | 寫 Local + 排 PENDING_OPS | LB_PRINTER, LB_PRINT_LOG |
 
 ---
 

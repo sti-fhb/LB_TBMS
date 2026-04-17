@@ -169,6 +169,23 @@ VERSION 取自 `version.py` 的 `VERSION` 常數（目前 `v1.1r1`）。組 RESU
 
 ## 跨模組 SRV（LB 相關的 DP 服務）
 
+> **認證方式變更（2026-04-17）**：LB 不再呼叫 APIDP001 取得 TOKEN。
+> TOKEN 與中央 API Base URL 皆**硬寫於 LBSB01 程式常數**（`login.py`）。
+> 線上/離線改由「健康檢查端點」判定。
+
+### 健康檢查端點（待主專案定義）
+
+**提供方**: DP 模組
+**呼叫方**: LBSB01（啟動時 + 每 60 秒）
+**用途**: 判定中央是否可達 → 決定 `session.online`
+
+| 項目 | 值 |
+|------|-----|
+| 方法 | `GET /api/health`（路徑待主專案定義） |
+| 認證 | `Authorization: Bearer <硬寫 TOKEN>` |
+| 成功回應 | 200 OK（任意 body） |
+| 失敗判定 | 連線逾時 / 4xx / 5xx → 視為離線 |
+
 ### SRVDP010 — 標籤印表機查詢服務（印表機解析）
 
 **提供方**: DP 模組
@@ -188,25 +205,6 @@ VERSION 取自 `version.py` 的 `VERSION` 常數（目前 `v1.1r1`）。組 RESU
 **處理**: 查詢 DP_COMPDEVICE_LABEL WHERE CLIENT_IP = :client_ip AND BAR_TYPE = :bar_type
 
 > 對應關係由管理者在「資訊設備」功能中設定。若未設定，SRVLB001 回傳 "資訊設備標籤要先設定"。
-
-### APIDP001 — 外部系統資料接收介面（認證）
-
-**提供方**: DP 模組
-**呼叫場景**: LBSB01 啟動時取得 TOKEN
-
-| 參數 | 型態 | 必填 | 說明 |
-|------|------|------|------|
-| code | string | Y | 外部系統識別碼：`LB_PRINT` |
-| passcode | string | Y | 通關密碼：`stark123` |
-
-| 回傳 | 型態 | 說明 |
-|------|------|------|
-| token | string | 存取 TOKEN |
-| expires_in | int | 有效秒數（預設 3600） |
-| token_type | string | `Bearer` |
-
-**端點**: `POST /api/ext/auth/token`
-**EA 認證參數**: `{1BEF51C7-CD73-44e6-8D3B-CD134B3D388D}`（Code=LB_PRINT, Passcode=stark123）
 
 ### SRVDP020 — 刪除元件設備標籤對應
 
