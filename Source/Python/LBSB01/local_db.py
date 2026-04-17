@@ -408,7 +408,7 @@ class LocalDB:
 
     # ── 便利方法：寫 Local + 排 PENDING_OPS ──────────────────
 
-    def add_printer(self, data: dict, _online: bool = False) -> tuple[bool, str]:
+    def add_printer(self, data: dict, online: bool = False) -> tuple[bool, str]:
         """新增印表機。寫 Local Cache + 排入 PENDING_OPS（線上由背景同步 Thread 處理）。"""
         pid = data.get("printer_id", "").strip()
         if not pid:
@@ -420,7 +420,7 @@ class LocalDB:
         self.enqueue_op("INSERT", "LB_PRINTER", data)
         return True, "OK"
 
-    def save_printer(self, data: dict, _online: bool = False) -> tuple[bool, str]:
+    def save_printer(self, data: dict, online: bool = False) -> tuple[bool, str]:
         """更新印表機。寫 Local Cache + 排入 PENDING_OPS（線上由背景同步 Thread 處理）。"""
         ip = (data.get("printer_ip") or "").strip()
         drv = (data.get("printer_driver") or "").strip()
@@ -431,7 +431,7 @@ class LocalDB:
         self.enqueue_op("UPDATE", "LB_PRINTER", data)
         return True, "OK"
 
-    def remove_printer(self, site_id: str, printer_id: str, _online: bool = False) -> tuple[bool, str]:
+    def remove_printer(self, site_id: str, printer_id: str, online: bool = False) -> tuple[bool, str]:
         """刪除印表機。寫 Local Cache + 排入 PENDING_OPS（含跨模組 SRV）。"""
         self.delete_printer(printer_id)
         # 順序保證：先 SRVDP020-刪除元件設備標籤對應（清 DP 子表）→ 再 DELETE LB_PRINTER

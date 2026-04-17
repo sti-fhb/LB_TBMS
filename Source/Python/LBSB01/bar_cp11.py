@@ -32,6 +32,9 @@ def print_cp11(
     paper_width: int = 80,
     paper_height: int = 75,
     gap: int = 3,
+    shift_l: int = 0,
+    shift_t: int = 0,
+    darkness: int = 12,
 ) -> None:
     """
     列印 CP11 — 血品核對標籤-合格。
@@ -39,11 +42,11 @@ def print_cp11(
     對應 VB6 Bar_L01_300DPI(rs1)。
     """
     printer.label_setup(width=paper_width, height=paper_height,
-                        gap=gap, darkness=12, speed=2)
+                        gap=gap, darkness=darkness, speed=2)
     printer.job_start()
 
-    base_x = 10
-    base_y = 45
+    base_x = 10 + shift_l
+    base_y = 45 + shift_t
     base_x1 = 470 + base_x
     base_xt = base_x + 40
     iby = base_y + 112
@@ -166,15 +169,15 @@ def print_cp11(
     # 採血日期 / 製備日期（二取一）
     # ══════════════════════════════════════════════════════════
     if data.data_9:
-        _bar_donor_date(printer, data.data_9, base_x1, 305 + iy_set)
+        _bar_donor_date(printer, data.data_9, base_x1, 305 + iy_set + shift_t)
     elif data.data_17:
-        _bar_cp_prd_date(printer, data.data_17, base_x1, 305 + iy_set)
+        _bar_cp_prd_date(printer, data.data_17, base_x1, 305 + iy_set + shift_t)
 
     # ══════════════════════════════════════════════════════════
     # 有效期限
     # ══════════════════════════════════════════════════════════
     if data.data_10:
-        _bar_lim_date(printer, data.data_10, base_x1, 342 + iy_set + 10)
+        _bar_lim_date(printer, data.data_10, base_x1, 342 + iy_set + 10 + shift_t)
 
     # ══════════════════════════════════════════════════════════
     # 注意事項（DATA_11，\n 分行）

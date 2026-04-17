@@ -69,9 +69,12 @@ class GodexPrinter:
 
         if self.link_type == LinkType.USB:
             self._dll = self._load_dll()
-            ret = self._dll.openport(usb_port.encode("ascii"))
+            usb_id = ctypes.create_string_buffer(256)
+            ret = self._dll.FindFirstUSB(usb_id)
+            if ret == 1:
+                ret = self._dll.OpenUSB(usb_id)
             if ret != 1:
-                raise ConnectionError(f"USB 開啟失敗 (openport('{usb_port}') 回傳 {ret})")
+                raise ConnectionError("USB 開啟失敗：找不到已連接的 GoDEX USB 印表機")
             self._connected = True
 
         elif self.link_type == LinkType.TCP:

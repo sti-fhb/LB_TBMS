@@ -22,7 +22,7 @@ from sample_data import LabelData
 from sample_data_print import SampleDataPrint, print_label
 from printer_setting import PrinterSetting
 from ezpl import GodexPrinter, LinkType
-from login import authenticate, Session, _read_config
+from login import authenticate, Session, _health_check, HARDCODED_TOKEN
 from local_db import LocalDB
 from central_api import replay_op
 from task_listener import start_listener, LISTENER_PORT
@@ -144,14 +144,15 @@ class App(tk.Tk):
         self._reconnect_id = self.after(60_000, self._try_reconnect)
 
     def _try_reconnect(self) -> None:
-        """每 60 秒嘗試重連主系統；成功後切換線上、同步 Local 暫存。"""
+        """每 60 秒健康檢查中央；成功後切換線上、同步 Local 暫存。"""
         self._reconnect_id = None
         if self.session.online:
             return  # 已上線，不再重試
 
-        new_session = authenticate()
-        if new_session.online:
-            self.session = new_session
+        if _health_check():
+            self.session.online = True
+            self.session.token = HARDCODED_TOKEN
+            self.session.error_message = ""
             self._log_msg(f"重連成功 → 切換為線上模式: site={self.session.site_id}")
             self._update_mode_display()
             self._sync_local_to_db()
@@ -167,9 +168,7 @@ class App(tk.Tk):
             self._log_msg("無待同步操作")
             return
 
-        cfg = _read_config()
-        api_url = cfg.get("api", "url")
-        token = self.session.token
+        token = HARDCODED_TOKEN
 
         total = len(ops)
         self._log_msg(f"開始同步 {total} 筆待同步操作至主 DB ...")
@@ -179,7 +178,7 @@ class App(tk.Tk):
         for op in ops:
             seq = op["seq"]
             success, msg = replay_op(
-                api_url, token,
+                token,
                 op["op_type"], op["target"], op["payload"],
             )
             if success:
@@ -359,6 +358,21 @@ class App(tk.Tk):
         if lbl is not None:
             lbl.config(text=ld.name if ld else "")
 
+        # 未勾選固定參數時，自動帶入紙張尺寸 + 印表機 shift/darkness
+        if online and not self.var_fix_size.get():
+            if ld:
+                self.var_w.set(str(ld.width_mm))
+                self.var_h.set(str(ld.height_mm))
+                size_str = ld.size_display
+                if size_str in self.cmb_size["values"]:
+                    self.cmb_size.set(size_str)
+            printer_id = row.get("PRINTER_ID", "")
+            p = self.local_db.get_printer(printer_id)
+            if p:
+                self.var_shift_l.set(str(p.get("SHIFT_LEFT") or 0))
+                self.var_shift_t.set(str(p.get("SHIFT_TOP") or 0))
+                self.var_dark.set(str(p.get("DARKNESS") or 12))
+
     def _set_var(self, name: str, value: str) -> None:
         v = getattr(self, name, None)
         if v is not None:
@@ -470,10 +484,10 @@ class App(tk.Tk):
         """顯示認證中提示畫面。"""
         self._splash = tk.Frame(self, bg=CLR_BG)
         self._splash.place(relx=0, rely=0, relwidth=1, relheight=1)
-        tk.Label(self._splash, text="正在登入主系統 DB ...",
+        tk.Label(self._splash, text="正在檢查主系統連線 ...",
                  font=("標楷體", 20, "bold"), bg=CLR_BG, fg=CLR_TITLE_FG).place(
                      relx=0.5, rely=0.4, anchor="center")
-        tk.Label(self._splash, text="APIDP001-外部系統資料接收介面 認證中",
+        tk.Label(self._splash, text="健康檢查中",
                  font=("新細明體", 11), bg=CLR_BG, fg=CLR_ACCENT).place(
                      relx=0.5, rely=0.5, anchor="center")
         self.update()
@@ -836,7 +850,10 @@ class App(tk.Tk):
         p = self.local_db.get_printer(printer_id)
         if p and (p.get("PRINTER_IP") or "").strip():
             return LinkType.TCP, p["PRINTER_IP"].strip(), 9100
-        return LinkType.USB, "", 9100
+        driver = (p.get("PRINTER_DRIVER") or "").strip() if p else ""
+        if driver and driver.upper() != "USB":
+            return LinkType.BT, driver, 9100
+        return LinkType.USB, driver, 9100
 
     # ── Actions ──────────────────────────────────────────────
     def _on_print(self) -> None:
@@ -864,13 +881,16 @@ class App(tk.Tk):
             messagebox.showwarning("列印", f"不支援的標籤類型: {bar_type}")
             return
 
-        try:
-            paper_w, paper_h = self._get_paper_size()
-        except ValueError as e:
-            messagebox.showwarning("輸入錯誤", str(e))
-            return
-
         shift_l, shift_t, darkness = self._get_print_params()
+
+        if self.var_fix_size.get():
+            try:
+                paper_w, paper_h = self._get_paper_size()
+            except ValueError as e:
+                messagebox.showwarning("輸入錯誤", str(e))
+                return
+        else:
+            paper_w, paper_h = label_def.width_mm, label_def.height_mm
 
         # 組裝列印資料
         data = LabelData(
@@ -896,7 +916,8 @@ class App(tk.Tk):
         try:
             with GodexPrinter(link) as printer:
                 printer.open(ip=ip, tcp_port=tcp_port)
-                print_label(printer, label_def, data, paper_w, paper_h)
+                print_label(printer, label_def, data, paper_w, paper_h,
+                            shift_l=shift_l, shift_t=shift_t, darkness=darkness)
 
             # ── 列印成功 → 更新 Status + RESULT ──
             from local_db import build_result

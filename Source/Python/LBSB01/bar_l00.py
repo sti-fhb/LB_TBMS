@@ -46,6 +46,7 @@ def print_l00(
     gap: int = 3,
     shift_left: int = 0,
     shift_top: int = 0,
+    darkness: int = 12,
 ) -> None:
     """
     透過 GodexPrinter 列印 L00（血品小條碼）標籤。
@@ -56,7 +57,7 @@ def print_l00(
     # ── Label Setup（寬/高/gap 由呼叫端帶入，不寫死）──
     printer.label_setup(
         width=paper_width, height=paper_height,
-        gap=gap, darkness=12, speed=2,
+        gap=gap, darkness=darkness, speed=2,
     )
 
     # ── Job Start ──

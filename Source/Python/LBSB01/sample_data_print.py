@@ -29,6 +29,9 @@ def print_label(
     data: LabelData,
     paper_w: int,
     paper_h: int,
+    shift_l: int = 0,
+    shift_t: int = 0,
+    darkness: int = 12,
 ) -> None:
     code = label_def.code
     if code in ("CP01", "CP02"):
@@ -40,11 +43,14 @@ def print_label(
             data_8=data.data_8, data_10=data.data_10, data_11=data.data_11,
             data_12=data.data_12, data_19=data.data_19,
         )
-        print_l00(printer, bld, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
+        print_l00(printer, bld, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap,
+                  shift_left=shift_l, shift_top=shift_t, darkness=darkness)
     elif code == "CP11":
-        print_cp11(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
+        print_cp11(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap,
+                   shift_l=shift_l, shift_t=shift_t, darkness=darkness)
     elif code == "CP19":
-        print_cp19(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap)
+        print_cp19(printer, data, paper_width=paper_w, paper_height=paper_h, gap=label_def.gap,
+                   shift_l=shift_l, shift_t=shift_t, darkness=darkness)
     else:
         _print_stub(printer, label_def, data, paper_w, paper_h)
 

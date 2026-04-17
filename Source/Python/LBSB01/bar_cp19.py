@@ -47,19 +47,19 @@ def print_cp19(
     # ── 採血日期（Data_9）─────────────────────────────────────
     a = data.data_9 or ""
     if a:
-        printer.text_out(base_x, 200, 46, FONT_0, "採血日期:")
-        printer.text_out(base_x, 200 + 55, 46, FONT_0, a)
+        printer.text_out(base_x, 200 + shift_t, 46, FONT_0, "採血日期:")
+        printer.text_out(base_x, 200 + 55 + shift_t, 46, FONT_0, a)
 
     # ── 生物危害標誌 ─────────────────────────────────────────
     if iby2 < 0:
         iby2 = 0
     img_path = os.path.join(_IMG_DIR, "biomedical-25.JPG")
     if os.path.exists(img_path):
-        printer.put_image(480, iby2, img_path)
+        printer.put_image(480 + shift_l, iby2, img_path)
 
     # ── 分隔線 ───────────────────────────────────────────────
     # 水平線（標籤下方）
-    printer.draw_hor_line(1, 445, 950 + shift_t, 3)
+    printer.draw_hor_line(1, 445 + shift_t, 950, 3)
     # 垂直線（左右分隔）
     gl_shift_l0 = shift_l
     printer.draw_ver_line(455 + gl_shift_l0, 0, 950, 3)
