@@ -119,7 +119,7 @@ Authorization: Bearer <你的模組 TOKEN>
      │    message: "OK" }  │                    │                  │                │
 ```
 
-> 完整時序圖見 [images/srvlb001-sequence.png](images/srvlb001-sequence.png)（尚未更新 SRVDP010 步驟）
+> 完整時序圖見 [images/srvlb001-sequence.png](images/srvlb001-sequence.png)
 
 ---
 

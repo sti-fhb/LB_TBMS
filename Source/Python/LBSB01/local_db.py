@@ -408,8 +408,8 @@ class LocalDB:
 
     # ── 便利方法：寫 Local + 排 PENDING_OPS ──────────────────
 
-    def add_printer(self, data: dict, online: bool) -> tuple[bool, str]:
-        """新增印表機。寫 Local Cache；離線時排入 PENDING_OPS。"""
+    def add_printer(self, data: dict, _online: bool = False) -> tuple[bool, str]:
+        """新增印表機。寫 Local Cache + 排入 PENDING_OPS（線上由背景同步 Thread 處理）。"""
         pid = data.get("printer_id", "").strip()
         if not pid:
             return False, "印表機編號不可為空"
@@ -417,29 +417,26 @@ class LocalDB:
             return False, f"印表機編號 {pid} 已存在，請使用不同編號"
 
         self.insert_printer(data)
-        if not online:
-            self.enqueue_op("INSERT", "LB_PRINTER", data)
+        self.enqueue_op("INSERT", "LB_PRINTER", data)
         return True, "OK"
 
-    def save_printer(self, data: dict, online: bool) -> tuple[bool, str]:
-        """更新印表機。寫 Local Cache；離線時排入 PENDING_OPS。"""
+    def save_printer(self, data: dict, _online: bool = False) -> tuple[bool, str]:
+        """更新印表機。寫 Local Cache + 排入 PENDING_OPS（線上由背景同步 Thread 處理）。"""
         ip = (data.get("printer_ip") or "").strip()
         drv = (data.get("printer_driver") or "").strip()
         if ip and drv:
             return False, "印表機 IP 與 Driver 不可同時填值（互斥）"
 
         self.update_printer(data)
-        if not online:
-            self.enqueue_op("UPDATE", "LB_PRINTER", data)
+        self.enqueue_op("UPDATE", "LB_PRINTER", data)
         return True, "OK"
 
-    def remove_printer(self, site_id: str, printer_id: str, online: bool) -> tuple[bool, str]:
-        """刪除印表機。寫 Local Cache；離線時排入 PENDING_OPS（含跨模組 SRV）。"""
+    def remove_printer(self, site_id: str, printer_id: str, _online: bool = False) -> tuple[bool, str]:
+        """刪除印表機。寫 Local Cache + 排入 PENDING_OPS（含跨模組 SRV）。"""
         self.delete_printer(printer_id)
-        if not online:
-            # 順序保證：先 SRVDP020（清 DP 子表）→ 再 DELETE LB_PRINTER
-            self.enqueue_op("CALL_SRV", "SRVDP020",
-                            {"site_id": site_id, "printer_id": printer_id})
-            self.enqueue_op("DELETE", "LB_PRINTER",
-                            {"printer_id": printer_id})
+        # 順序保證：先 SRVDP020-刪除元件設備標籤對應（清 DP 子表）→ 再 DELETE LB_PRINTER
+        self.enqueue_op("CALL_SRV", "SRVDP020",
+                        {"site_id": site_id, "printer_id": printer_id})
+        self.enqueue_op("DELETE", "LB_PRINTER",
+                        {"printer_id": printer_id})
         return True, "OK"

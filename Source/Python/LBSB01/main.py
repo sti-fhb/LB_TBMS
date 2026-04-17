@@ -18,12 +18,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from labels import LABEL_DEFS, LABEL_MAP, PAPER_SIZES, LabelDef
-from sample_data import LabelData, build_sample
+from sample_data import LabelData
 from sample_data_print import SampleDataPrint, print_label
 from printer_setting import PrinterSetting
 from ezpl import GodexPrinter, LinkType
-from login import authenticate, Session
+from login import authenticate, Session, _read_config
 from local_db import LocalDB
+from central_api import replay_op
 from task_listener import start_listener, LISTENER_PORT
 from version import VERSION
 from tray import TrayIcon
@@ -93,6 +94,7 @@ class App(tk.Tk):
             self._log_msg(f"LOGIN 成功（線上模式）: site={self.session.site_id}")
             messagebox.showinfo("連線成功",
                 f"已連線至主系統\n站點：{self.session.site_name}")
+            self._start_sync_timer()
         else:
             self._log_msg(f"LOGIN 離線作業: site={self.session.site_id}")
             messagebox.showinfo("離線作業",
@@ -153,19 +155,98 @@ class App(tk.Tk):
             self._log_msg(f"重連成功 → 切換為線上模式: site={self.session.site_id}")
             self._update_mode_display()
             self._sync_local_to_db()
+            self._start_sync_timer()
         else:
             # 仍離線 → 60 秒後再試
             self._reconnect_id = self.after(60_000, self._try_reconnect)
 
     def _sync_local_to_db(self) -> None:
-        """上線後清除 Local 未更新至主 DB 的資料。
+        """上線後 replay PENDING_OPS 至中央 DB，再全量刷新 Local Cache。"""
+        ops = self.local_db.get_pending_ops()
+        if not ops:
+            self._log_msg("無待同步操作")
+            return
 
-        TODO: 正式實作時掃描本地 Queue 暫存檔，
-        將離線期間累積的資料逐筆 Call SRV 回寫中央 DB。
-        """
-        self._log_msg("開始同步 Local 暫存資料至主 DB ...")
-        # TODO: 掃描 Local Queue 暫存 → 逐筆 Call SRVLB001 / SRVLB011
-        self._log_msg("Local 同步完成（目前為 stub，無實際資料）")
+        cfg = _read_config()
+        api_url = cfg.get("api", "url")
+        token = self.session.token
+
+        total = len(ops)
+        self._log_msg(f"開始同步 {total} 筆待同步操作至主 DB ...")
+
+        ok_count = 0
+        fail_count = 0
+        for op in ops:
+            seq = op["seq"]
+            success, msg = replay_op(
+                api_url, token,
+                op["op_type"], op["target"], op["payload"],
+            )
+            if success:
+                self.local_db.mark_op_synced(seq)
+                ok_count += 1
+            else:
+                self.local_db.mark_op_failed(seq)
+                fail_count += 1
+                self._log_msg(f"同步失敗 SEQ={seq} [{op['op_type']}/{op['target']}]: {msg}")
+
+        self._log_msg(f"同步完成: 成功 {ok_count} 筆, 失敗 {fail_count} 筆")
+
+    # ── 背景同步 Timer（線上時每 30 秒處理 PENDING_OPS）──────
+    _sync_timer_id: str | None = None
+
+    def _start_sync_timer(self) -> None:
+        """啟動背景同步計時器（線上模式時定期處理 PENDING_OPS）。"""
+        if self._sync_timer_id is not None:
+            return
+        self._sync_timer_id = self.after(30_000, self._sync_tick)
+
+    def _stop_sync_timer(self) -> None:
+        if self._sync_timer_id is not None:
+            self.after_cancel(self._sync_timer_id)
+            self._sync_timer_id = None
+
+    def _sync_tick(self) -> None:
+        """每 30 秒檢查 PENDING_OPS，有待同步就 replay。"""
+        self._sync_timer_id = None
+        if not self.session.online:
+            return  # 離線不同步
+        pending = self.local_db.pending_count()
+        if pending > 0:
+            self._sync_local_to_db()
+        # 排下一次
+        if self.session.online:
+            self._sync_timer_id = self.after(30_000, self._sync_tick)
+
+    # ── Auto Print（勾選後每 2 秒自動送印 Online Queue 第一筆）──
+    _auto_print_id: str | None = None
+
+    def _on_auto_toggle(self, *_args) -> None:
+        """Auto CheckBox 切換 → 啟動/停止自動列印計時器。"""
+        if self.var_auto.get():
+            self._log_msg("Auto 自動列印已啟動")
+            self._auto_print_tick()
+        else:
+            self._log_msg("Auto 自動列印已停止")
+            if self._auto_print_id is not None:
+                self.after_cancel(self._auto_print_id)
+                self._auto_print_id = None
+
+    def _auto_print_tick(self) -> None:
+        """每 2 秒檢查 Online Queue，有項目就自動送印第一筆。"""
+        self._auto_print_id = None
+        if not self.var_auto.get():
+            return
+        queue_list = self.local_db.list_online_queue()
+        if queue_list:
+            # 自動選取第一筆
+            self.lst_queue.selection_clear(0, "end")
+            self.lst_queue.selection_set(0)
+            self._on_online_select()
+            self._on_print()
+        # 排下一次（無論有無項目都繼續 tick）
+        if self.var_auto.get():
+            self._auto_print_id = self.after(2000, self._auto_print_tick)
 
     # ── Task Events Poll（每 200ms 從 queue 取 Listener 通知）──
     def _poll_task_events(self) -> None:
@@ -222,6 +303,30 @@ class App(tk.Tk):
 
     def _on_offline_select(self, _event=None) -> None:
         self._fill_detail(self.lst_wait, self.local_db.list_offline_queue(), online=False)
+
+    def _on_online_dblclick(self, _event=None) -> None:
+        """雙擊 Online 項目 → 移至 Offline Queue。"""
+        queue_list = self.local_db.list_online_queue()
+        sel = self.lst_queue.curselection()
+        if not sel or sel[0] >= len(queue_list):
+            return
+        row = queue_list[sel[0]]
+        uuid = row.get("UUID", "")
+        self.local_db.move_task_to_offline(uuid)
+        self._refresh_queues()
+        self._log_msg(f"移至離線區: {row.get('BAR_TYPE','')} @ {row.get('PRINTER_ID','')}")
+
+    def _on_offline_dblclick(self, _event=None) -> None:
+        """雙擊 Offline 項目 → 移回 Online Queue。"""
+        queue_list = self.local_db.list_offline_queue()
+        sel = self.lst_wait.curselection()
+        if not sel or sel[0] >= len(queue_list):
+            return
+        row = queue_list[sel[0]]
+        uuid = row.get("UUID", "")
+        self.local_db.move_task_to_online(uuid)
+        self._refresh_queues()
+        self._log_msg(f"移回線上區: {row.get('BAR_TYPE','')} @ {row.get('PRINTER_ID','')}")
 
     def _fill_detail(self, listbox: tk.Listbox, queue_list: list[dict], online: bool) -> None:
         sel = listbox.curselection()
@@ -348,6 +453,10 @@ class App(tk.Tk):
         if self._reconnect_id is not None:
             self.after_cancel(self._reconnect_id)
             self._reconnect_id = None
+        self._stop_sync_timer()
+        if self._auto_print_id is not None:
+            self.after_cancel(self._auto_print_id)
+            self._auto_print_id = None
         if hasattr(self, "_http_server"):
             self._http_server.shutdown()
         if hasattr(self, "_tray"):
@@ -408,6 +517,7 @@ class App(tk.Tk):
         self.var_link = tk.StringVar(value="USB")
 
         self.var_auto = tk.IntVar(value=0)
+        self.var_auto.trace_add("write", self._on_auto_toggle)
         tk.Checkbutton(top, text="Auto自動依序列印", variable=self.var_auto,
                        bg=CLR_BG, fg=CLR_TITLE_FG, selectcolor=CLR_BG,
                        font=("新細明體", 12)).pack(side="left", padx=(10, 0))
@@ -483,6 +593,7 @@ class App(tk.Tk):
         self.lst_queue = tk.Listbox(frm_queue, font=("新細明體", 12), height=6)
         self.lst_queue.pack(fill="both", expand=True, pady=(4, 0))
         self.lst_queue.bind("<<ListboxSelect>>", self._on_online_select)
+        self.lst_queue.bind("<Double-Button-1>", self._on_online_dblclick)
 
         self.btn_print_online = tk.Button(
             frm_queue, text="  列印線上指定項目  ",
@@ -610,6 +721,7 @@ class App(tk.Tk):
         self.lst_wait = tk.Listbox(frm_wait, font=("新細明體", 12), height=5)
         self.lst_wait.pack(fill="both", expand=True, pady=(4, 0))
         self.lst_wait.bind("<<ListboxSelect>>", self._on_offline_select)
+        self.lst_wait.bind("<Double-Button-1>", self._on_offline_dblclick)
 
         # ====== Row 4: 訊息 + 測試列印 ======
         row4 = tk.Frame(self, bg=CLR_BG)
@@ -690,35 +802,116 @@ class App(tk.Tk):
         if hasattr(self, "lst_msg"):
             self._add_msg(text)
 
+    # ── 取得目前選取的 Queue 項目 UUID ─────────────────────────
+    def _get_selected_queue_uuid(self, online: bool) -> str | None:
+        """取得目前 Online/Offline Queue 選取項目的 UUID；未選取回傳 None。"""
+        listbox = self.lst_queue if online else self.lst_wait
+        queue_list = (self.local_db.list_online_queue() if online
+                      else self.local_db.list_offline_queue())
+        sel = listbox.curselection()
+        if not sel or sel[0] >= len(queue_list):
+            return None
+        return queue_list[sel[0]].get("UUID", "")
+
+    # ── 取得列印參數（shift / darkness）──────────────────────
+    def _get_print_params(self) -> tuple[int, int, int]:
+        """回傳 (shift_left, shift_top, darkness)。"""
+        try:
+            shift_l = int(self.var_shift_l.get().strip() or "0")
+        except ValueError:
+            shift_l = 0
+        try:
+            shift_t = int(self.var_shift_t.get().strip() or "0")
+        except ValueError:
+            shift_t = 0
+        try:
+            darkness = int(self.var_dark.get().strip() or "12")
+        except ValueError:
+            darkness = 12
+        return shift_l, shift_t, darkness
+
+    # ── 取得印表機連線資訊 ───────────────────────────────────
+    def _get_printer_connection(self, printer_id: str) -> tuple[LinkType, str, int]:
+        """依 printer_id 查 Local Cache 取得連線方式。"""
+        p = self.local_db.get_printer(printer_id)
+        if p and (p.get("PRINTER_IP") or "").strip():
+            return LinkType.TCP, p["PRINTER_IP"].strip(), 9100
+        return LinkType.USB, "", 9100
+
     # ── Actions ──────────────────────────────────────────────
     def _on_print(self) -> None:
-        label_def = self._get_label_def()
-        if not label_def:
-            messagebox.showwarning("輸入錯誤", "請選擇標籤類型")
+        """列印線上指定項目：取 Queue 選取項目 → GoDEX 列印 → 更新 Status + RESULT。"""
+        # 必須先選取 Online Queue 項目
+        uuid = self._get_selected_queue_uuid(online=True)
+        if not uuid:
+            messagebox.showwarning("列印", "請先在 Online Queue 選取一筆列印項目")
             return
+
+        # 取完整 Task 資料
+        row = self.local_db._conn.execute(
+            "SELECT * FROM LB_PRINT_LOG_CACHE WHERE UUID=?", (uuid,)
+        ).fetchone()
+        if not row:
+            messagebox.showwarning("列印", "找不到該筆列印資料")
+            return
+        row = dict(row)
+        bar_type = row.get("BAR_TYPE", "")
+        printer_id = row.get("PRINTER_ID", "")
+
+        # 從 LABEL_MAP 取標籤定義
+        label_def = LABEL_MAP.get(bar_type)
+        if not label_def:
+            messagebox.showwarning("列印", f"不支援的標籤類型: {bar_type}")
+            return
+
         try:
             paper_w, paper_h = self._get_paper_size()
         except ValueError as e:
             messagebox.showwarning("輸入錯誤", str(e))
             return
 
-        data = build_sample(label_def.code)
-        link = LinkType.USB if self.var_link.get() == "USB" else LinkType.TCP
-        ip = self.var_ip.get().strip()
-        try:
-            tcp_port = int(self.var_port.get().strip())
-        except ValueError:
-            tcp_port = 9100
+        shift_l, shift_t, darkness = self._get_print_params()
 
-        self._add_msg(f"列印 {label_def.display} ({paper_w}x{paper_h}mm)")
+        # 組裝列印資料
+        data = LabelData(
+            label_type=bar_type,
+            bag_no=row.get("SPECIMEN_NO", ""),
+            data_1=row.get("DATA_1", ""), data_2=row.get("DATA_2", ""),
+            data_3=row.get("DATA_3", ""), data_4=row.get("DATA_4", ""),
+            data_5=row.get("DATA_5", ""), data_6=row.get("DATA_6", ""),
+            data_7=row.get("DATA_7", ""), data_8=row.get("DATA_8", ""),
+            data_9=row.get("DATA_9", ""), data_10=row.get("DATA_10", ""),
+            data_11=row.get("DATA_11", ""), data_12=row.get("DATA_12", ""),
+            data_13=row.get("DATA_13", ""), data_14=row.get("DATA_14", ""),
+            data_15=row.get("DATA_15", ""), data_16=row.get("DATA_16", ""),
+            data_17=row.get("DATA_17", ""), data_18=row.get("DATA_18", ""),
+            data_19=row.get("DATA_19", ""),
+        )
+
+        # 取得印表機連線方式
+        link, ip, tcp_port = self._get_printer_connection(printer_id)
+
+        self._add_msg(f"列印 {bar_type} @ {printer_id} ({paper_w}x{paper_h}mm)")
 
         try:
             with GodexPrinter(link) as printer:
                 printer.open(ip=ip, tcp_port=tcp_port)
                 print_label(printer, label_def, data, paper_w, paper_h)
 
+            # ── 列印成功 → 更新 Status + RESULT ──
+            from local_db import build_result
+            result_val = build_result(
+                fixed=bool(self.var_fix_size.get()),
+                width=paper_w, height=paper_h,
+                shift_left=shift_l, shift_top=shift_t,
+                darkness=darkness,
+            )
+            self.local_db.delete_queue_task(uuid, online=True)
+            self.local_db.update_print_log(uuid, status=1, result=result_val)
+            self._refresh_queues()
+
             mode = "USB" if link == LinkType.USB else f"TCP {ip}:{tcp_port}"
-            self._add_msg(f"列印完成（{mode}）")
+            self._log_msg(f"列印完成: {bar_type} @ {printer_id}（{mode}）RESULT={result_val}")
 
         except FileNotFoundError as e:
             messagebox.showerror("DLL 錯誤", str(e))
@@ -821,18 +1014,33 @@ class App(tk.Tk):
 
 
 def _ensure_single_instance() -> None:
-    """用 port 9200 是否可綁定來判定是否已有實例在跑；已存在則靜默退出。
+    """用持久 socket bind 確保只有一個 LBSB01 在跑；已存在則靜默退出。
 
-    （不用 tasklist 因 PyInstaller onefile 會顯示 bootloader + 主程序兩個 LBSB01.exe）
+    socket 綁 127.0.0.1:9201（不是 9200，避免與 Task Listener 衝突）。
+    設 SO_EXCLUSIVEADDRUSE 防止其他 process 重複 bind。
+    socket 不關閉，process 結束時 OS 自動回收。
     """
     import socket as _sk
     import sys as _sys
+
     s = _sk.socket(_sk.AF_INET, _sk.SOCK_STREAM)
     try:
-        s.bind(("127.0.0.1", LISTENER_PORT))
-        s.close()
+        s.setsockopt(_sk.SOL_SOCKET, _sk.SO_EXCLUSIVEADDRUSE, 1)  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        pass  # 非 Windows 或不支援
+    try:
+        s.bind(("127.0.0.1", 9201))
+        # 不關閉 socket → 持續佔用直到 process 結束
+        # 存到 module 層級避免被 GC 回收
+        global _instance_lock_socket  # noqa: PLW0603
+        _instance_lock_socket = s
+        log.info("單一實例檢查通過（port 9201 bind 成功）")
     except OSError:
-        _sys.exit(0)  # port 被占用 → 已有另一支 LBSB01 在跑
+        log.info("偵測到另一支 LBSB01 正在執行，本次啟動中止")
+        _sys.exit(0)
+
+
+_instance_lock_socket = None  # module-level reference, prevent GC
 
 
 if __name__ == "__main__":

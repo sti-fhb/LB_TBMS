@@ -502,10 +502,57 @@ class PrinterSetting(tk.Toplevel):
     # ── 列印識別貼紙 ─────────────────────────────────────────
 
     def _on_print_id_label(self) -> None:
+        """列印印表機識別貼紙：印出 PRINTER_ID + 名稱，尺寸取主畫面紙張輸出規格。"""
         if self._selected_idx is None:
             messagebox.showwarning("列印", "請先選取印表機")
             return
         p = self._printers[self._selected_idx]
-        messagebox.showinfo("列印識別貼紙",
-            f"印表機: {p['printer_id']} - {p.get('printer_name','')}\n"
-            f"（識別貼紙列印待實作）")
+        pid = p.get("printer_id", "")
+        pname = p.get("printer_name", "")
+
+        # 取主畫面紙張輸出規格
+        master = self.master
+        try:
+            paper_w = int(master.var_w.get().strip())
+            paper_h = int(master.var_h.get().strip())
+        except (ValueError, AttributeError):
+            paper_w, paper_h = 80, 35
+        try:
+            shift_l = int(master.var_shift_l.get().strip() or "0")
+        except (ValueError, AttributeError):
+            shift_l = 0
+        try:
+            shift_t = int(master.var_shift_t.get().strip() or "0")
+        except (ValueError, AttributeError):
+            shift_t = 0
+        try:
+            darkness = int(master.var_dark.get().strip() or "12")
+        except (ValueError, AttributeError):
+            darkness = 12
+
+        # 取該印表機的連線方式
+        ip = (p.get("printer_ip") or "").strip()
+        from ezpl import GodexPrinter, LinkType
+        link = LinkType.TCP if ip else LinkType.USB
+
+        try:
+            with GodexPrinter(link) as printer:
+                printer.open(ip=ip, tcp_port=9100)
+                printer.label_setup(paper_w, paper_h, 3, darkness=darkness, speed=2)
+                printer.job_start()
+                bx = 5 + shift_l
+                by = 5 + shift_t
+                printer.text_out(bx, by, 50, "標楷體", pid)
+                by += 55
+                if pname:
+                    printer.text_out(bx, by, 30, "標楷體", pname)
+                printer.job_end()
+
+            messagebox.showinfo("列印完成", f"識別貼紙已印出:\n{pid} - {pname}")
+        except FileNotFoundError as e:
+            messagebox.showerror("DLL 錯誤", str(e))
+        except ConnectionError as e:
+            messagebox.showerror("連線失敗", str(e))
+        except Exception as e:
+            log.error("識別貼紙列印失敗: %s", e)
+            messagebox.showerror("列印失敗", str(e))
