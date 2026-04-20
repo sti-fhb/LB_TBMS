@@ -2,7 +2,6 @@
 
 **日期**: 2026-04-20
 **模組代碼**: LB（標籤列印）
-**實體關聯圖**: [erd.md](erd.md)
 
 ---
 
@@ -99,3 +98,51 @@
   - 離線刪除：`v1.1r1-Off_DEL`
 - **DATA_1~DATA_19**：依 `BAR_TYPE` 決定各欄位意義，具體對應表請見 LB 模組規格。
 - **標準欄位**：CREATED_USER/CREATED_DATE/CREATED_SITE/UPDATED_USER/UPDATED_DATE/UPDATED_SITE/RES_ID/DELETED 依 CLAUDE.md 規範於 DDL 時補齊。
+
+---
+
+## 實體關聯圖（ERD）
+
+```mermaid
+erDiagram
+    LB_PRINTER {
+        varchar PRINTER_ID PK
+        varchar SITE_ID FK
+        varchar PRINTER_NAME
+        varchar SERVER_IP
+        varchar PRINTER_IP
+        varchar PRINTER_DRIVER
+        int SHIFT_LEFT
+        int SHIFT_TOP
+        int PAPER_WIDTH
+        int DARKNESS
+        int FIX_PAPER_H
+        varchar MODEL_NO
+        int IS_ACTIVE
+        varchar NOTE
+        int PRINT_SPEED
+    }
+
+    LB_PRINT_LOG {
+        varchar UUID PK
+        varchar BAR_TYPE
+        varchar SITE_ID FK
+        varchar PRINTER_ID FK
+        varchar SPECIMEN_NO
+        varchar DATA_1
+        varchar DATA_19
+        varchar SERVER_IP
+        int STATUS
+        varchar RESULT
+    }
+
+    LB_PRINTER ||--o{ LB_PRINT_LOG : "輸出標籤至"
+```
+
+### 關聯說明
+
+| 關聯 | 基數 | 說明 |
+|------|------|------|
+| LB_PRINTER → LB_PRINT_LOG | 1:N | 一台印表機可產出多筆列印記錄（透過 PRINTER_ID） |
+| DP_SITE → LB_PRINTER | 1:N | 一個站點可有多台印表機（透過 SITE_ID） |
+| DP_SITE → LB_PRINT_LOG | 1:N | 一個站點可有多筆列印記錄（透過 SITE_ID） |

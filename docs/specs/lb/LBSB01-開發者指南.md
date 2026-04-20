@@ -43,12 +43,14 @@ _LB/
 │       └── LBSB01{YYYYMMDD}.log ← 每日系統 Log
 │
 ├── docs/
-│   ├── LBSB01-操作手冊.md       ← 操作人員用
-│   ├── LBSB01-開發者指南.md     ← ← 本文件
 │   └── specs/lb/
-│       ├── spec.md              ← 功能規格
+│       ├── LBSB01-操作手冊.md       ← 操作人員用
+│       ├── LBSB01-開發者指南.md     ← ← 本文件
+│       ├── SRVLB001-標籤列印整合指南.md
+│       ├── spec.md                  ← 功能規格
+│       ├── data-model.md            ← 資料模型 + ERD
 │       └── contracts/
-│           └── srv-contracts.md ← SRV 契約（完整 I/O 定義）
+│           └── srv-contracts.md     ← SRV 契約（完整 I/O 定義）
 ```
 
 ---
@@ -770,7 +772,8 @@ pyinstaller --onefile --windowed --name LBSB01 main.py
 
 | 文件 | 路徑 | 用途 |
 |------|------|------|
-| 操作手冊 | `docs/LBSB01-操作手冊.md` | 操作人員使用說明 |
+| 操作手冊 | `docs/specs/lb/LBSB01-操作手冊.md` | 操作人員使用說明 |
+| 整合指南 | `docs/specs/lb/SRVLB001-標籤列印整合指南.md` | 外部模組呼叫 SRVLB001 |
 | SRV 契約 | `docs/specs/lb/contracts/srv-contracts.md` | 完整 I/O 規格 |
 | 功能規格 | `docs/specs/lb/spec.md` | SA 設計 |
-| ERD / 欄位明細 | `docs/specs/lb/data-model.md`、`docs/specs/lb/erd.md` | 資料模型與實體關聯 |
+| ERD / 欄位明細 | `docs/specs/lb/data-model.md` | 資料模型與實體關聯（含 Mermaid ERD） |
