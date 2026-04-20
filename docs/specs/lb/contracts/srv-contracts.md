@@ -1,7 +1,7 @@
 # 內部服務契約：標籤模組（LB）
 
 **建立日期**: 2026-04-15
-**來源**: EA Model Services/LB-標籤（SRVLB001, 011, 091–094）
+**涵蓋服務**: SRVLB001, 011, 091–094
 
 > 內部服務（SRV）供模組間呼叫，其他模組不直接存取 LB Table。
 > LBSB01 端程式一律透過 SRV 存取中央 DB（不可直接連線）。
@@ -223,4 +223,3 @@ VERSION 取自 `version.py` 的 `VERSION` 常數（目前 `v1.1r1`）。組 RESU
 | message | string | 訊息 |
 
 **處理**: DELETE FROM DP_COMPDEVICE_LABEL WHERE SITE_ID = :site_id AND PRINTER_ID = :printer_id
-**EA Element ID**: -69055610

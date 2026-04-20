@@ -773,4 +773,4 @@ pyinstaller --onefile --windowed --name LBSB01 main.py
 | 操作手冊 | `docs/LBSB01-操作手冊.md` | 操作人員使用說明 |
 | SRV 契約 | `docs/specs/lb/contracts/srv-contracts.md` | 完整 I/O 規格 |
 | 功能規格 | `docs/specs/lb/spec.md` | SA 設計 |
-| EA Model | `C:\TSBMS\EA_Model\TSBMS三總捐供血R.eap` | 流程圖 / ERD（需 EA 授權） |
+| ERD / 欄位明細 | `docs/specs/lb/data-model.md`、`docs/specs/lb/erd.md` | 資料模型與實體關聯 |

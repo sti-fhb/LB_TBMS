@@ -137,7 +137,7 @@ site_name = 總院捐血中心
 
 ## 7. 不在本 Issue 範圍
 
-- EA Model 變更（SRV 契約調整由主專案負責）
+- SRV 契約調整（由主專案負責）
 - 主專案的健康檢查端點實作
 - 主專案的 SRVDP020 端點實作
 - 主專案的 LB Table CRUD API 實作
