@@ -37,6 +37,6 @@
 | 檔案 | 用途 |
 |------|------|
 | `memory/project_lb_unimplemented.md` | 總覽清單（Claude memory，給後續對話參考） |
-| `docs/issue/ISLBxxx.md` | 單一 Issue 詳細規格（給 PG 實作依據） |
+| `issue/ISLBxxx.md` | 單一 Issue 詳細規格（給 PG 實作依據） |
 
 總覽清單條目若有獨立 Issue，可互相引用。

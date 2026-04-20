@@ -127,11 +127,11 @@ site_name = 總院捐血中心
 
 ## 6. 相關文件
 
-- [docs/specs/lb/LBSB01-開發者指南.md](../specs/lb/LBSB01-開發者指南.md) — Section 3 config.ini、Section 4 啟動流程、Section 8.1 健康檢查
-- [docs/specs/lb/LBSB01-操作手冊.md](../specs/lb/LBSB01-操作手冊.md) — Section 2.2 認證機制、Section 2.3 config.ini
-- [docs/specs/lb/spec.md](../specs/lb/spec.md) — R02 / R03 核心特性
-- [docs/specs/lb/contracts/srv-contracts.md](../specs/lb/contracts/srv-contracts.md) — 健康檢查端點
-- [docs/specs/lb/images/offline-reconnect.png](../specs/lb/images/offline-reconnect.png) — 離線重連流程圖
+- [docs/specs/lb/LBSB01-開發者指南.md](../docs/specs/lb/LBSB01-開發者指南.md) — Section 3 config.ini、Section 4 啟動流程、Section 8.1 健康檢查
+- [docs/specs/lb/LBSB01-操作手冊.md](../docs/specs/lb/LBSB01-操作手冊.md) — Section 2.2 認證機制、Section 2.3 config.ini
+- [docs/specs/lb/spec.md](../docs/specs/lb/spec.md) — R02 / R03 核心特性
+- [docs/specs/lb/contracts/srv-contracts.md](../docs/specs/lb/contracts/srv-contracts.md) — 健康檢查端點
+- [docs/specs/lb/images/offline-reconnect.png](../docs/specs/lb/images/offline-reconnect.png) — 離線重連流程圖
 
 ---
 
