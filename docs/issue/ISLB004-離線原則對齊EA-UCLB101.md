@@ -146,7 +146,111 @@ def _do_sync(self):
 
 ---
 
-## 6. 驗收標準
+## 6. 業務邏輯補充說明（SA 本次討論整理，供 PG 實作參考）
+
+本 issue 主軸是「離線原則」，但過程中釐清了幾個**容易被誤解的業務邏輯點**，在此集中列出。每條都是完整需求語意，PG 實作時需一併遵守。
+
+### 6.1 同步時機「只有兩個入口」
+
+```
+_do_sync()  ←──────┬── OffLine Retry Timer 到期（3 分鐘一次，離線時才啟動）
+                   └── 使用者按主畫面 [更新] 按鈕
+```
+
+**不可**加其他自動觸發來源（例如：啟動後每 N 秒、接收到 Task 後、印表機設定變更後）。若需要在開機時試連一次，就走「主畫面開啟完成後呼叫一次 `_do_sync()`」，不另建 Timer。
+
+### 6.2 「一律以 Local DB 蓋中央 DB」的具體含義
+
+不是單純「上線後推 Local 到中央」，而是 **Local 即為最終真相、中央只是異地備份**：
+
+| 情境 | 動作 |
+|------|------|
+| Local 新增一筆印表機 → 中央已有同 ID | **以 Local 的欄位值 upsert 蓋中央**（不因中央已有就放棄）|
+| Local 修改一筆 → 中央值較新 | **以 Local 蓋中央**（不走「以中央為準」的衝突解析）|
+| Local 刪除一筆 → 中央已無 | DELETE 回 404 **視為成功**（Local 想刪，中央已無 = 目的達成）|
+| 中央多出一筆 Local 沒有的資料 | **不動** Local（不做「上線後全量刷回 Local」）|
+
+> 設計理由：LBSB01 駐在 Site 端，使用者只在這台機器上改印表機 / 列印，Local 的資料就是最新；中央只是讓其他 Site / 查詢功能可以看到。
+
+### 6.3 SRVLB001 格式一 vs 格式二（補印）
+
+中央 SRVLB001 以傳入參數判格式：
+
+| 格式 | 必填 | 使用情境 | 中央處理 |
+|------|------|---------|---------|
+| 格式一 | `bar_type` + `site_id` + `data_*`（client_ip 由 HTTP 自動取） | BC/CP/BS/TL 一般列印 | Call SRVDP010(client_ip, bar_type) 解析 PRINTER_ID + SERVER_IP + params；data_* 由 Client 傳入 |
+| 格式二 | `printer_id` + `log_uuid` | UCLB002-LBSR01 補印 | 讀 LB_PRINT_LOG(log_uuid) 取回**原** BAR_TYPE + data_\*（**Client 不重傳**）；讀 LB_PRINTER(printer_id) 取 SERVER_IP + params |
+
+**PG 注意**：補印時 `printer_id` **可以跟原紀錄不同**（使用者指定新的印表機），但 `bar_type` + `data_*` 一定是原紀錄（不重傳）。中央會 `INSERT LB_PRINT_LOG 新 UUID`（非 UPDATE 原紀錄），可由 `RES_ID` 欄位追溯原 log_uuid。
+
+### 6.4 `PRINTER_ID = "USB"` 保留字
+
+代表「Client 端的本機 USB 印表機」。遇到這個值時：
+- SRVDP010：**跳過 LB_PRINTER 查詢**，`server_ip` / `printer_params` 回傳空白
+- APILB007 新增 LOG：**跳過 LB_PRINTER 存在性驗證**
+- Client 端：自行走 USB 直連輸出路徑（**不經 LBSB01 HTTP Listener**）
+
+不要把 "USB" 當普通 PRINTER_ID 處理、不要對它做 LB_PRINTER JOIN。
+
+### 6.5 Queue 不阻塞策略
+
+Online Queue 中某筆 Task 送至印表機失敗（印表機故障 / 卡紙 / 離線）時：
+
+1. 該 Task **自動移至 Offline Queue**（Status 0 → 2、RESULT 寫入失敗備註）
+2. **Online Queue 繼續消化下一筆 Task**，不停擺
+3. 使用者排除印表機故障後，**手動**（雙擊）將 Offline Queue 的 Task 移回 Online Queue 重列；或直接於 Offline 區變更指定印表機後移回
+
+**PG 注意**：不要實作「重試 N 次才移至 Offline」之類的自動重試邏輯 — 使用者明確要求「一次失敗就移出，不要卡隊」。
+
+### 6.6 Auto 自動列印 vs 手動列印（主畫面 Auto CheckBox）
+
+| Auto 狀態 | 明細區行為 | 指定印表機欄 | 列印按鈕 |
+|-----------|----------|--------------|---------|
+| **未勾**（手動）| 顯示**使用者點選的** Queue Task 明細 | 可下拉覆寫（僅影響選中那筆）| 啟用，按下列印該筆 |
+| **已勾**（自動）| 顯示**系統正在列印的**那筆（隨 Queue 消化切換）| Disabled（不可覆寫）| Disabled（不可按）|
+
+### 6.7 「固定參數」CheckBox（紙張輸出規格區）
+
+勾選行為：
+
+| 狀態 | 紙張規格欄位（標籤類型 / 尺寸 / 寬 / 高 / 左位移 / 上位移 / 明暗）|
+|------|-------|
+| **未勾**（預設）| 自動反映目前選中 Task：標籤類型 → 帶入尺寸；指定印表機 → 查印表機設定檔帶入左/上位移/明暗 |
+| **已勾**（固定）| 所有欄位**凍結不自動更新**，操作者可手動改；列印時使用**畫面上當時的值**（非自動帶入值）|
+
+勾選「固定參數」時，RESULT 字串會多帶一個 `F`（例 `v1.1r1-FW80H35L40T0D8`）以供稽核追溯。
+
+### 6.8 RESULT 備註代碼（Status 變更的旁敘述）
+
+| 備註 | 意義 | Status |
+|------|------|--------|
+| `W..H..L..T..D..`（純參數）| 列印成功 | 0/2 → 1 |
+| `-OffLine` | 工作被移至離線區（手動 或 列印失敗自動搬）| → 2 |
+| `-OnLine` | 工作從離線區移回線上 | 2 → 0 |
+| `-Delete` | Online 區人工刪除 | 0 → 1 |
+| `-Off_DEL` | Offline 區人工刪除 | 2 → 1 |
+
+**一律透過 `local_db.build_result()` 組裝**，不自行拼字串（避免格式不一致）。
+
+### 6.9 訊息區同步顯示 Log 的範圍（R06）
+
+- `_log_msg(text)`：同時寫 Log 檔 + 主畫面訊息區（系統訊息：Login / Logout / 重連成功 / 同步完成 / 系統異常）
+- `_add_msg(text)`：**只寫**訊息區（操作訊息：列印結果、佇列變更）
+
+原則：**凡 Log 有記錄的系統訊息一律同步顯示給操作者**，讓操作者在訊息區就能看到系統運作狀態，不必去翻 Log 檔。
+
+### 6.10 標籤測試頁走同條 Task Listener 路徑
+
+測試頁（`sample_data_print.py`）**不另開獨立列印通道**：
+- 測試頁送件 → `POST http://localhost:9200/api/lb/task`（本機迴路）
+- Body 固定 `status = 2` → 直接進 **Offline Queue**（不影響 Online 正式排隊）
+- 測試結果在主畫面 Offline Queue 區可見、可手動移回 Online Queue 重印
+
+好處：驗證整條 Listener → local.db → Queue → GUI 路徑一次到位；測試不干擾正式作業。
+
+---
+
+## 7. 驗收標準
 
 - [ ] `login.py` 無 `HEALTH_CHECK_PATH` 常數、無 `GET /api/health` 呼叫
 - [ ] `main.py` 無 60 秒 / 30 秒 Timer；僅 3 分鐘 OffLine Retry Timer
@@ -157,3 +261,16 @@ def _do_sync(self):
 - [ ] DELETE 目標在中央已不存在 → 回 404 視為成功、STATUS=1
 - [ ] UPDATE 目標在中央已不存在 → 改走 INSERT（upsert），成功
 - [ ] Log 記錄：回復線上時 `INFO: 回復線上，已同步 N 筆 PENDING_OPS`
+
+### 業務邏輯驗收（對應 §6 補充說明）
+
+- [ ] 同步僅由 Timer（3 分鐘）或 [更新] 按鈕觸發，無其他自動入口（§6.1）
+- [ ] 衝突測試：Local vs 中央同時改同一筆 → 上線後中央值 = Local 值（§6.2）
+- [ ] 補印（UCLB002 格式二）：Client 只傳 `printer_id + log_uuid`，中央自行從 LB_PRINT_LOG 取回 `bar_type + data_*`，可指定新印表機（§6.3）
+- [ ] `PRINTER_ID="USB"` 保留字：不經 LBSB01 Listener，Client 走 USB 直連（§6.4）
+- [ ] Queue 不阻塞：印表機故障時該筆自動移至 Offline Queue，下一筆繼續列印（§6.5）
+- [ ] Auto 勾選時：明細區隨佇列消化切換、指定印表機欄與列印按鈕皆 Disabled（§6.6）
+- [ ] 固定參數勾選時：紙張規格欄位凍結 + RESULT 多 `F` 旗標（§6.7）
+- [ ] RESULT 組字串一律透過 `local_db.build_result()`（§6.8）
+- [ ] 訊息區：Login / Logout / 重連成功 / 同步完成同時顯示在訊息區與 Log 檔（§6.9）
+- [ ] 測試頁走 `POST localhost:9200`（非獨立通道），Task 進 Offline Queue（§6.10）
