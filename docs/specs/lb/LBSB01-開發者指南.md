@@ -30,7 +30,7 @@
 _LB/
 ├── Source/Python/LBSB01/        ← Python 原始碼
 │   ├── main.py                  ← 程式進入點（App 主視窗）
-│   ├── login.py                 ← 認證模組（TOKEN + 中央 URL 硬寫常數 + 健康檢查）
+│   ├── login.py                 ← 認證模組（TOKEN + 中央 URL 硬寫常數；無 Login、無健康檢查）
 │   ├── local_db.py              ← 本地 SQLite 封裝（Cache + Queue + PENDING_OPS）
 │   ├── printer_setting.py       ← 印表機設定頁面
 │   ├── sample_data_print.py     ← 標籤測試頁
@@ -103,14 +103,14 @@ python main.py
 
 ### 2.4 開發用離線模式
 
-網路不通或中央服務未啟動時，健康檢查失敗 → 程式自動進入**離線模式**（`session.online = False`）：
+網路不通或中央服務未啟動時，**Call APILB 失敗（連線逾時 / 5xx）** → 程式進入**離線模式**（`session.online = False`）：
 
 - 印表機設定 CRUD → 寫 Local Cache + 排 PENDING_OPS
 - 標籤測試頁 → POST localhost:9200 走本機迴路（正常可用）
 - Queue 操作（移動/刪除/列印）→ 操作 local.db
-- 跨模組 SRV（SRVDP020）→ 排入 PENDING_OPS，上線後 replay
+- 中央 API 呼叫（APILB001~007）→ 排入 PENDING_OPS，待同步時 replay
 
-> 離線模式讓開發者不需中央服務即可開發 UI 與流程邏輯。中央恢復連線後健康檢查成功即自動切換為線上模式。
+> 離線模式讓開發者不需中央服務即可開發 UI 與流程邏輯。離線時 Timer **每 3 分鐘**、或使用者按主畫面 **[更新]** 按鈕，才觸發同步；同步動作即執行 replay，並依 API 回應得知當下是否回復線上。成功後靜默切換線上模式（不 Prompt）。
 
 ---
 
@@ -141,10 +141,11 @@ site_name = 總院捐血中心
 |------|------|
 | `HARDCODED_TOKEN` | 供 Task Listener 驗證 + 主動呼叫中央時帶入 Bearer |
 | `CENTRAL_API_BASE` | 中央 API Base URL（例：`http://192.168.1.100:8000`） |
-| `HEALTH_CHECK_PATH` | 健康檢查路徑（例：`/api/health`，待主專案定義） |
 
-> ⚠ **URL 對齊規則**：未來任何 URL 變更（包括健康檢查、APIDP/SRV 路徑等），一律**以主專案 infra 文件為準**（`c:\TSBMS\TBMS\docs\specs\dp\contracts\api-contracts.md` 等）。
+> ⚠ **URL 對齊規則**：未來任何 URL 變更（APIDP/SRV 路徑等），一律**以主專案 infra 文件為準**（`c:\TSBMS\TBMS\docs\specs\dp\contracts\api-contracts.md` 等）。
 > 不得自行決定路徑規則，避免與主專案不一致。
+>
+> **無健康檢查端點**（2026-04-22 對齊 EA 離線原則）：LBSB01 不做獨立健康檢查 ping，線上/離線狀態由實際 Call APILB 的結果決定。
 
 > 程式啟動時若 config.ini 不存在，會自動建立預設 `[site]`。
 
@@ -152,26 +153,27 @@ site_name = 總院捐血中心
 
 ## 4. 啟動流程與認證
 
+> **無 Login 動作**：Call APILB 一律用 Bearer Token，程式不做獨立健康檢查 ping；離線狀態由**首次真正呼叫 APILB** 的結果決定（EA 離線原則 R03 / UCLB101）。
+
 ```
 main.py 啟動
   │
-  ├─ 顯示 Splash：「正在檢查主系統連線 ...」
+  ├─ 顯示 Splash：「正在啟動 ...」
   │
   ├─ login.authenticate()
   │    ├─ 讀 config.ini（[site]）
   │    ├─ 載入 HARDCODED_TOKEN（login.py 常數）
-  │    ├─ 健康檢查：GET {CENTRAL_API_BASE}{HEALTH_CHECK_PATH}
-  │    │    Header: Authorization: Bearer <HARDCODED_TOKEN>
-  │    │
-  │    ├─ 網路通 → Session(online=True)
-  │    └─ 網路不通 → Session(online=False, error_message=原因)
+  │    └─ 組 Session（online 暫設 True，待首次 API 呼叫後修正）
   │
   ├─ 移除 Splash
   │
-  ├─ online=True  → 顯示「連線成功」+ 標題【線上】（綠色）
-  └─ online=False → 顯示「離線作業」+ 標題【離線】（紅色）
-       │
-       └─ 程式仍可執行（僅本地 Queue 功能可用，異動排入 PENDING_OPS）
+  ├─ 主畫面開啟，背景啟動：
+  │    ├─ Task Listener（:9200）
+  │    └─ 首次同步：替代「健康檢查」的角色 — Call APILB001（取印表機清單）
+  │         ├─ 成功 → online=True，標題【線上】（綠色），刷新 Local Cache
+  │         └─ 失敗（連線逾時 / 5xx）→ online=False，標題【離線】（紅色），
+  │                                     啟動 OffLine Retry Timer（3 分鐘）
+  └─ 離線時程式仍可執行（本地 Queue + 印表機 CRUD；異動排入 PENDING_OPS）
 ```
 
 ### Session 結構
@@ -182,7 +184,7 @@ class Session:
     site_id: str          # 站點代碼（from config.ini）
     site_name: str        # 站點名稱
     token: str            # from login.HARDCODED_TOKEN（永久有效）
-    online: bool          # True=線上 / False=離線（依健康檢查結果）
+    online: bool          # True=線上 / False=離線（依 APILB 呼叫結果）
     error_message: str    # 連線失敗原因（online=True 時為空）
 ```
 
@@ -192,10 +194,10 @@ class Session:
 |------|-----|------|
 | TOKEN | 硬寫字串 | `login.HARDCODED_TOKEN` |
 | 中央 Base URL | 硬寫字串 | `login.CENTRAL_API_BASE` |
-| 健康檢查路徑 | 硬寫字串 | `login.HEALTH_CHECK_PATH`（待主專案定義） |
 
-> **變更紀錄（2026-04-17）**：原設計呼叫 APIDP001 取得動態 TOKEN，現改為 TOKEN 永久有效、硬寫於程式。
-> TOKEN 由管理者人工配發給 LBSB01 開發者，編譯進程式碼。
+> **變更紀錄**：
+> - 2026-04-17：原呼叫 APIDP001 取動態 TOKEN 改為硬寫 `HARDCODED_TOKEN`（永久有效）。
+> - 2026-04-22：移除健康檢查端點（`HEALTH_CHECK_PATH`）；線上/離線改由實際 Call APILB 結果判定，對齊 EA UCLB101「離線原則」Rule。
 
 ---
 
@@ -209,14 +211,14 @@ class Session:
 |---------|------|------|
 | **LB_PRINTER**（自家） | 直接 SQL | 透過 `local_db.py` 讀寫本地 SQLite Cache，線上時同步中央 |
 | **LB_PRINT_LOG**（自家） | 直接 SQL | 同上 |
-| **DP_COMPDEVICE_LABEL**（跨模組） | Call **SRVDP020** | 離線時排入 PENDING_OPS |
+| **DP_COMPDEVICE_LABEL**（跨模組） | 由 **APILB005** 後端 cascade 清除，LBSB01 不直接呼叫 | 刪除印表機時後端一併清子表 |
 | **其他模組呼叫 LB** | 透過 **SRVLB001** | LB 提供的對外服務（列印指令接收） |
 
 ```
 LBSB01 (Python)
   │
   ├─ TOKEN + 中央 URL 硬寫於 login.py 常數
-  ├─ 健康檢查（GET /api/health）判定線上/離線
+  ├─ 離線偵測：Call APILB 失敗（逾時/5xx）→ session.online=False
   │
   ├─ local_db.py（本地 SQLite）
   │   ├─ LB_PRINTER_CACHE      ← 自家 Table 直接讀寫
@@ -224,10 +226,14 @@ LBSB01 (Python)
   │   ├─ ONLINE_QUEUE / OFFLINE_QUEUE
   │   └─ PENDING_OPS           ← 同步操作佇列
   │
-  ├─ 寫入一律先寫 Local Cache + 排 PENDING_OPS
-  └─ 背景同步 Timer（每 30 秒）→ replay PENDING_OPS
-                                     │
-        主動呼叫中央（帶 Bearer TOKEN）┘
+  ├─ 寫入一律先寫 Local Cache + 排 PENDING_OPS（Local-first）
+  └─ 同步時機（僅這兩個時機）：
+        ├─ OffLine Retry Timer（每 3 分鐘）
+        └─ 使用者按主畫面 [更新] 按鈕
+              │
+              ▼
+        replay PENDING_OPS（帶 Bearer TOKEN）
+        策略：一律以 Local DB 蓋中央 DB
 ```
 
 ### SRV 清單（僅保留對外服務 + 跨模組呼叫）
@@ -235,25 +241,26 @@ LBSB01 (Python)
 | 編碼 | 名稱 | 類別 | 說明 |
 |------|------|------|------|
 | **SRVLB001** | 標籤列印通用API | 對外提供 | 其他模組（BC/CP/BS/TL）Call LB 送列印指令 |
-| **SRVDP010** | 標籤印表機查詢服務 | 由 SRVLB001 呼叫 | LB 不直接呼叫 |
-| **SRVDP020** | 刪除元件設備標籤對應 | 跨模組呼叫 | 刪除印表機時先清 DP 子表 |
-| **健康檢查端點** | `GET /api/health`（待主專案定義） | 跨模組呼叫 | 判定線上狀態 |
+| **SRVDP010** | 資訊設備標籤印表機查詢 | 由 SRVLB001 呼叫 | LB 不直接呼叫 |
+| **APILB001~005** | 印表機 CRUD（複數 REST 端點）| 對外提供 | 印表機查清單/單筆/新增/修改/刪除 |
+| **APILB006** | 回報列印事件（UPDATE LB_PRINT_LOG）| 對外提供 | LBSB01 回寫列印完成/狀態變更 |
+| **APILB007** | 新增列印事件（INSERT LB_PRINT_LOG）| 對外提供 | 測試頁/離線新增 LOG（或中央 SRVLB001 進件）|
 
-> 自家 Table 的 CRUD（新增/查詢/更新/刪除印表機、LOG 更新）走 Local Cache + PENDING_OPS，背景同步 Timer replay 至中央。
+> 自家 Table 的 CRUD（新增/查詢/更新/刪除印表機、LOG 更新）走 Local Cache + PENDING_OPS，由 OffLine Retry Timer（3 分鐘）或 [更新] 按鈕觸發 replay 至中央。
 >
-> **已棄用**：APIDP001（TOKEN 改硬寫，不再呼叫）。
+> **已棄用**：APIDP001（TOKEN 改硬寫，不再呼叫）；健康檢查端點（離線偵測改由 Call APILB 結果判定）。
 
 ---
 
 ## 6. 離線暫存與同步架構（local.db）
 
-### 6.1 設計原則
+### 6.1 設計原則（EA UCLB101「離線原則」Rule）
 
 LBSB01 為 24x7 常駐程式，必須在**網路中斷時仍能正常運作**。所有資料操作遵循：
 
-1. **先寫 Local**（即時生效，畫面不卡）
-2. **線上 → 同步寫中央**（直接 SQL 或 Call SRV）
-3. **離線 → 排入 PENDING_OPS**（上線後依序 replay）
+1. **無 Login 動作** — CALL API 一律帶 Bearer Token（`HARDCODED_TOKEN`）；當 **Call APILB 連不上中央 DB 時才會知道當下是離線**（無獨立健康檢查 ping）。
+2. **同步時機僅兩種** — 離線時啟動 Timer **每 3 分鐘**，或使用者按主畫面 **[更新]** 按鈕；**只有這兩個時機才 replay PENDING_OPS**，並由 API 回應得知當下線上/離線。
+3. **Local-first + 一律以 Local 蓋中央** — 不管線上或離線，Call APILB **前先寫 Local DB**；待連線時再 Sync 更新。**一律以 Local DB 蓋中央 DB**（不做欄位合併/衝突解析），使離線時可修改印表機、列印測試標籤。
 
 ### 6.2 local.db 結構（SQLite，WAL mode）
 
@@ -278,7 +285,11 @@ local.db
 
 ### 6.3 線上/離線模式判定
 
-![離線重連流程](images/offline-reconnect.png)
+![LBSB01 內部功能流程（UCLB101，離線原則權威圖）](images/uclb101-flow.png)
+
+> **離線判定**：不做獨立 `GET /api/health` ping。程式 Call APILB（如 APILB001 取清單、APILB006 回報事件）時：
+> - 成功（200） → `session.online = True`
+> - 連線逾時 / 5xx → `session.online = False`，啟動 OffLine Retry Timer
 
 **離線模式下仍可使用的功能**：
 
@@ -290,24 +301,39 @@ local.db
 | 印表機設定 CRUD | ✓ | 寫 Local Cache + 排 PENDING_OPS |
 | GoDEX 列印（USB/TCP） | ✓ | 與印表機的通訊不經中央 |
 
-### 6.4 重連機制（60 秒自動重試）
+### 6.4 同步機制（OffLine Retry Timer 3 分鐘 + 手動 [更新]）
 
-離線時，程式每 60 秒自動呼叫 `authenticate()` 嘗試重連中央（流程見上圖）。
+離線時，以下**兩個時機**會觸發同步動作（包含 replay PENDING_OPS 並由 API 回應判定線上/離線）：
+
+1. **OffLine Retry Timer**：離線時啟動，每 **3 分鐘**執行一次；回復線上後關閉 Timer
+2. **主畫面 [更新] 按鈕**：使用者手動觸發同步
 
 **程式對應**（[main.py](Source/Python/LBSB01/main.py)）：
 
 ```python
-def _try_reconnect(self):
-    new_session = authenticate()
-    if new_session.online:
-        self.session = new_session
-        self._update_mode_display()     # 切換標題【線上】
-        self._sync_local_to_db()        # replay PENDING_OPS
+OFFLINE_RETRY_INTERVAL_MS = 3 * 60 * 1000   # 3 分鐘（EA 離線原則 R03）
+
+def _start_offline_retry_timer(self):
+    """離線時啟動 OffLine Retry Timer（每 3 分鐘觸發 _do_sync）"""
+    self._retry_id = self.after(OFFLINE_RETRY_INTERVAL_MS, self._do_sync)
+
+def _on_refresh_clicked(self):
+    """主畫面 [更新] 按鈕：手動觸發同步"""
+    self._do_sync()
+
+def _do_sync(self):
+    """唯一同步入口：replay PENDING_OPS → 依 API 回應判定線上/離線"""
+    ok = self._sync_local_to_db()       # 實際 Call APILB；一律以 Local 蓋中央
+    self.session.online = ok
+    self._update_mode_display()
+    if ok:
+        self._stop_offline_retry_timer()
     else:
-        self._reconnect_id = self.after(60_000, self._try_reconnect)
+        self._start_offline_retry_timer()
 ```
 
-> 重連使用 Tkinter 的 `after()` 排程，不另開 Thread。`after()` 在 Main Thread 執行，與 UI 操作無衝突。
+> 同步使用 Tkinter 的 `after()` 排程，不另開 Thread。`after()` 在 Main Thread 執行，與 UI 操作無衝突。
+> **不設其他背景 Timer**：不做獨立健康檢查 ping、不做額外 30 秒週期 replay；同步只能由 3 分鐘 Timer 或 [更新] 按鈕觸發。
 
 ### 6.5 操作流程（online 旗標分流）
 
@@ -321,8 +347,7 @@ def _try_reconnect(self):
   │
   ├─ 2. session.online?
   │      │
-  │      ├─ YES → 直接寫中央 DB（LB 自家 Table）
-  │      │        或 HTTP Call 跨模組 SRV（如 SRVDP020）
+  │      ├─ YES → HTTP Call 中央 API（APILB001~007）寫中央 DB
   │      │
   │      └─ NO  → INSERT INTO PENDING_OPS
   │               OP_TYPE: INSERT / UPDATE / DELETE / CALL_SRV
@@ -345,17 +370,15 @@ def add_printer(self, data: dict, online: bool):
 def remove_printer(self, site_id, printer_id, online: bool):
     # 1. 永遠先刪 Local Cache
     self.delete_printer(printer_id)
-    # 2. 離線時排入兩筆 PENDING_OPS（順序保證）
+    # 2. 離線時排入一筆 PENDING_OPS（APILB005 後端 cascade 清子表）
     if not online:
-        self.enqueue_op("CALL_SRV", "SRVDP020",       # 先清 DP 子表
-                        {"site_id": site_id, "printer_id": printer_id})
-        self.enqueue_op("DELETE", "LB_PRINTER",         # 再刪主表
+        self.enqueue_op("DELETE", "LB_PRINTER",         # APILB005 後端 cascade 清 DP_COMPDEVICE_LABEL
                         {"printer_id": printer_id})
 ```
 
-### 6.6 上線後同步（_sync_local_to_db）
+### 6.6 同步動作（_sync_local_to_db）
 
-重連成功後，自動 replay 離線期間累積的 PENDING_OPS：
+由 OffLine Retry Timer（3 分鐘）或 [更新] 按鈕觸發時執行，replay 累積的 PENDING_OPS；策略為「**一律以 Local DB 蓋中央 DB**」：
 
 ![Local → Main DB 同步流程](images/local-sync-flow.png)
 
@@ -370,16 +393,18 @@ def remove_printer(self, site_id, printer_id, online: bool):
 # ── Step 1: Local Cache 即時刪除（畫面立刻消失）──
 DELETE FROM LB_PRINTER_CACHE WHERE PRINTER_ID='PRN-004'
 
-# ── Step 2: 排入 PENDING_OPS（順序保證）──
-SEQ=1: CALL_SRV / SRVDP020 / {"site_id":"S01","printer_id":"PRN-004"}  ← 先清 DP 子表
-SEQ=2: DELETE   / LB_PRINTER / {"printer_id":"PRN-004"}                 ← 再刪主表
+# ── Step 2: 排入 PENDING_OPS（一筆即可，APILB005 後端 cascade）──
+SEQ=1: DELETE / LB_PRINTER / {"printer_id":"PRN-004"}   ← 對應 APILB005
 
 # ── Step 3: 上線後 replay（_sync_local_to_db）──
-SEQ=1 → HTTP POST SRVDP020（刪除 DP_COMPDEVICE_LABEL）→ 成功 → STATUS=1
-SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATUS=1
+SEQ=1 → HTTP DELETE /api/lb/printers/PRN-004
+        APILB005 後端 Transaction：
+          ① DELETE FROM DP_COMPDEVICE_LABEL WHERE PRINTER_ID='PRN-004'（先清子表）
+          ② DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004'（硬刪主表）
+        → 成功 → PENDING_OPS.STATUS=1
 ```
 
-> **順序很重要**：SRVDP020 必須在 DELETE LB_PRINTER 之前執行，否則 DP 子表的外鍵參照會失敗。`enqueue_op` 的 SEQ 自增保證了 replay 順序。
+> **架構簡化（2026-04-22）**：原本兩段式（SRVDP020 + SRVLB092）已統一到 APILB005 單一端點，由後端 Transaction 保證 cascade 原子性。LBSB01 端只需排一筆 PENDING_OPS，不再有順序相依問題。
 
 ### 6.8 local_db.py 主要 API
 
@@ -387,7 +412,7 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 |------|------|
 | `add_printer(data, online)` | 新增印表機：寫 Cache + 離線排 PENDING_OPS |
 | `save_printer(data, online)` | 更新印表機：寫 Cache + 離線排 PENDING_OPS |
-| `remove_printer(site, pid, online)` | 刪除印表機：刪 Cache + 離線排 SRVDP020 + DELETE |
+| `remove_printer(site, pid, online)` | 刪除印表機：刪 Cache + 離線排一筆 DELETE PENDING_OPS（對應 APILB005，後端 cascade 清子表）|
 | `list_printers(site_id)` | 查詢站點印表機（讀 Local Cache） |
 | `insert_print_log(data)` | Task 寫入 LOG（Task Listener 呼叫） |
 | `update_print_log(uuid, status, result)` | 更新 LOG 狀態 + RESULT |
@@ -401,14 +426,18 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 | `replace_all_printers(site_id, list)` | 全量刷新 Cache（上線同步後用） |
 | `build_result(...)` | 組 RESULT（見 Section 9.8） |
 
-### 6.9 衝突處理
+### 6.9 衝突處理（一律以 Local DB 蓋中央 DB）
+
+EA UCLB101「離線原則」明定「一律以 Local DB 蓋中央 DB 即可」，不做欄位層級合併或以中央為準的覆蓋；實作時：
 
 | 情境 | 策略 |
 |------|------|
-| 離線期間修改了印表機，中央也被改 | 上線同步後**全量刷新 Cache**，以中央為準 |
-| PENDING_OPS 某筆 replay 失敗 | 標記 STATUS=2，不阻塞後續；下次同步重試 |
-| 離線刪了印表機，但中央已不存在 | DELETE 失敗（不存在）→ 忽略，標記 STATUS=1 |
-| 離線新增印表機，中央已有同 ID | INSERT 衝突 → 標記 STATUS=2，全量刷新後以中央為準 |
+| 離線期間修改了印表機，中央也被改 | 以 Local 蓋中央（PENDING_OPS 的 UPDATE 直接 PATCH/upsert）|
+| PENDING_OPS 某筆 replay 失敗 | 標記 STATUS=2，不阻塞後續；下次同步時機再重試 |
+| 離線刪了印表機，但中央已不存在 | DELETE 回 404 視為成功，標記 STATUS=1 |
+| 離線新增印表機，中央已有同 ID | 改以 UPDATE（upsert 語意），仍以 Local 值覆蓋中央 |
+
+> **不做「上線後全量從中央拉取刷新 Local」**。Local 即為最終狀態，中央只是 Local 的異地備份。
 
 ---
 
@@ -424,10 +453,11 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 
 | 編碼 | 名稱 | 呼叫場景 | 離線處理 |
 |------|------|---------|---------|
-| **健康檢查端點** | `GET /api/health`（待主專案定義） | 啟動時 + 每 60 秒 | 失敗 → 離線模式 |
-| **SRVDP020** | 刪除元件設備標籤對應 | 刪除印表機時 | 排入 PENDING_OPS |
+| **APILB005** | 刪除印表機（後端 cascade 清 DP_COMPDEVICE_LABEL）| 刪除印表機時 | 排入一筆 DELETE PENDING_OPS |
 
-> **已棄用**：APIDP001-外部系統資料接收介面（TOKEN 改硬寫於 `login.py`，不再呼叫）。
+> **已棄用**：
+> - APIDP001-外部系統資料接收介面（TOKEN 改硬寫於 `login.py`，不再呼叫）
+> - 健康檢查端點（離線偵測改由實際 Call APILB 結果判定，EA UCLB101 離線原則）
 
 ### 自家模組直接操作（不需 SRV）
 
@@ -442,32 +472,36 @@ SEQ=2 → DELETE FROM LB_PRINTER WHERE PRINTER_ID='PRN-004' → 成功 → STATU
 
 ## 8. API 呼叫模式
 
-本節說明 LBSB01 涉及的三種 API 呼叫模式：**健康檢查**、**被動接收**、**跨模組 SRV 呼叫**。
+本節說明 LBSB01 涉及的三種 API 呼叫模式：**同步 API 呼叫（兼作離線偵測）**、**被動接收**、**本機迴路**。
 
-### 8.1 健康檢查（LBSB01 → 中央）
+> **無獨立健康檢查端點**（EA UCLB101 離線原則）：LBSB01 **不做** `GET /api/health` 之類的 ping。線上/離線由**實際 Call APILB 的結果**決定，並且同步僅由 OffLine Retry Timer（3 分鐘）或主畫面 [更新] 觸發。
 
-LBSB01 啟動時及每 60 秒 ping 中央健康檢查端點，判定 `session.online`：
+### 8.1 同步 API 呼叫（LBSB01 → 中央；兼作離線偵測）
+
+同步時機觸發 `_sync_local_to_db()`，依序 replay PENDING_OPS；每支 HTTP 呼叫的結果即視同「線上偵測」：
 
 ```
-LBSB01                                     中央 DP Server
-──────                                     ──────────────
-GET {CENTRAL_API_BASE}{HEALTH_CHECK_PATH}
-  Header: Authorization: Bearer <HARDCODED_TOKEN>
-                                   ──→ 驗證 TOKEN
-                                       檢查中央服務存活
-                                   ←── 200 OK
+LBSB01                                     中央 TBMS
+──────                                     ──────────
+OffLine Retry Timer 3 分鐘 觸發
+  或 使用者按 [更新] 觸發
+  │
+  ▼ 逐筆 replay PENDING_OPS（Bearer HARDCODED_TOKEN）
+HTTP {POST|PATCH|DELETE} /api/lb/...
+                                   ──→ APILB001~007
+                                   ←── 200 OK / 4xx / 5xx / timeout
 
-[網路可達] → session.online = True
-[逾時 / 4xx / 5xx] → session.online = False
+[任一筆成功] → session.online = True，停 Retry Timer
+[全部失敗 / 逾時] → session.online = False，繼續 3 分鐘後重試
 ```
 
 **呼叫時機**：
 
 | 時機 | 說明 |
 |------|------|
-| 程式啟動 | Splash 畫面中自動執行 |
-| 重連計時器 | 離線時每 60 秒重試 |
-| 背景同步 Timer | 線上時每 30 秒 replay PENDING_OPS 前不主動 ping |
+| 程式啟動後首次同步 | 主畫面開啟完成時觸發一次，兼作開機連線探測 |
+| OffLine Retry Timer | 離線時每 **3 分鐘**觸發 |
+| 主畫面 [更新] 按鈕 | 使用者手動觸發 |
 
 **TOKEN 與 URL 來源**：
 
@@ -475,15 +509,15 @@ GET {CENTRAL_API_BASE}{HEALTH_CHECK_PATH}
 |------|------|------|
 | TOKEN | `login.HARDCODED_TOKEN` | 硬寫於程式，永久有效 |
 | 中央 Base URL | `login.CENTRAL_API_BASE` | 硬寫於程式 |
-| 健康檢查路徑 | `login.HEALTH_CHECK_PATH` | 硬寫於程式（待主專案定義） |
 
 **失敗處理**：
-- 連線逾時 / 拒絕 → `session.online = False`，進入離線模式
-- HTTP 4xx → TOKEN 可能失效（罕見，因 TOKEN 永久有效），記錄錯誤
-- 離線模式下程式仍可正常運作（見 Section 6.3）
+- 連線逾時 / 5xx / 拒絕 → `session.online = False`，離線模式續跑
+- HTTP 4xx 單筆 → 該 PENDING_OP 標記 STATUS=2（失敗），不阻塞其他筆；不自動切離線
+- 4xx 中 401/403（罕見，TOKEN 應永久有效）→ 記錄 ERROR 至 Log，繼續視為離線
 
-> **變更紀錄（2026-04-17）**：原設計呼叫 **APIDP001-外部系統資料接收介面** 取得動態 TOKEN。
-> 改為 TOKEN 永久有效、硬寫於程式後，APIDP001 不再被 LB 呼叫。
+> **變更紀錄**：
+> - 2026-04-17：原呼叫 APIDP001 取動態 TOKEN 改為硬寫 TOKEN。
+> - 2026-04-22：移除 `GET /api/health` 健康檢查端點；離線偵測改由實際 Call APILB 結果判定；Timer 由 60 秒改為 **3 分鐘**、加入 [更新] 手動同步（對齊 EA UCLB101 離線原則 Rule）。
 
 ### 8.2 Task Listener 被動接收（中央 → LBSB01）
 
@@ -522,38 +556,35 @@ Call SRVLB001
 
 **本機測試頁也走同一端點**（POST `localhost:9200`，Status=2），確保整條路徑可驗證。
 
-### 8.3 跨模組 SRV 呼叫（LBSB01 → 中央）
+### 8.3 中央 API 呼叫（LBSB01 → 中央）
 
-刪除印表機等跨模組操作需呼叫 DP 提供的 SRV：
+刪除印表機等操作透過 APILB005 單一端點進行（後端 Transaction cascade 清子表）：
 
 ```
-LBSB01                                     中央 DP Server
-──────                                     ──────────────
-[線上] HTTP POST SRVDP020
-  Authorization: Bearer <token>
-  Body: {
-    "site_id": "S01",
-    "printer_id": "PRN-004"
-  }
-                                   ──→ DELETE FROM DP_COMPDEVICE_LABEL
-                                       WHERE SITE_ID='S01'
-                                       AND PRINTER_ID='PRN-004'
-                                   ←── { success: true, deleted_count: 3 }
+LBSB01                                     中央 TBMS
+──────                                     ──────────
+[線上] HTTP DELETE /api/lb/printers/PRN-004
+  Authorization: Bearer <硬寫 Token>
+                                   ──→ APILB005 後端 Transaction：
+                                       ① DELETE FROM DP_COMPDEVICE_LABEL
+                                          WHERE PRINTER_ID='PRN-004'
+                                       ② DELETE FROM LB_PRINTER
+                                          WHERE PRINTER_ID='PRN-004'（硬刪）
+                                   ←── { success: true, deleted_label_rows: 3 }
 
 [離線] 不呼叫，排入 PENDING_OPS：
-  SEQ=N: CALL_SRV / SRVDP020 / {"site_id":"S01","printer_id":"PRN-004"}
-  → 上線後 _sync_local_to_db() 依 SEQ 順序 replay
+  SEQ=N: DELETE / LB_PRINTER / {"printer_id":"PRN-004"}  ← 對應 APILB005
+  → 上線後 _sync_local_to_db() replay（一筆即可）
 ```
 
 ### 8.4 呼叫模式對照表
 
 | 模式 | 方向 | 觸發 | 離線處理 | 範例 |
 |------|------|------|---------|------|
-| 健康檢查 | LBSB01 → 中央 | 啟動 / 每 60 秒 | 網路不通→離線模式 | GET /api/health |
+| 同步 + 線上偵測 | LBSB01 → 中央 | OffLine Retry Timer（3 分鐘）/ [更新] 按鈕 | 呼叫失敗 → 保持離線、Timer 重試 | APILB001~007 |
 | 被動接收 | 中央 → LBSB01 | 中央 SRVLB001 轉發 | Listener 仍運行，但中央不可達 | Task Listener :9200 |
 | 本機迴路 | LBSB01 → LBSB01 | 測試頁送件 | 正常可用（localhost） | POST localhost:9200 |
-| 跨模組 SRV | LBSB01 → 中央 | 使用者操作 | 排入 PENDING_OPS | SRVDP020 |
-| 自家 Table | LBSB01 → local.db + 中央同步 | 使用者操作 | 寫 Local + 排 PENDING_OPS | LB_PRINTER, LB_PRINT_LOG |
+| 自家 Table 寫入 | LBSB01 → local.db（+ 同步時回寫中央）| 使用者操作（新增/改/刪印表機、列印完成）| 寫 Local + 排 PENDING_OPS | LB_PRINTER, LB_PRINT_LOG |
 
 ---
 
@@ -668,22 +699,35 @@ def _poll_task_events(self):
 
 ### 9.8 RESULT 寫入格式
 
-RESULT 記錄每次狀態異動的來源資訊，格式由 `local_db.build_result()` 產生：
+RESULT 記錄每次狀態異動的來源資訊，格式由 `local_db.build_result()` 產生。
+
+**格式**：
 
 ```
-格式：[VERSION] + ['F'?固定參數] + 'W'[寬] + 'H'[長] + 'L'[左位移] + 'T'[上位移] + 'D'[明暗值] + [備註]
+[程式版本號]+'-'+[如果勾固定參數本欄為'F']+'W'+[寬]+'H'+[長]+'L'+[左位移]+'T'+[上位移]+'D'+[明暗值]+[備註]
 ```
+
+**備註代碼**（[備註] 內容，不含前置 `-`；`-` 為格式固定分隔符）：
+
+| 代碼 | 意義 | Status 變更 |
+|------|------|-----------|
+| `OnLine` | 工作被移至 Online 區 | 保持 |
+| `OffLine` | 工作被移至離線區 | → 2 |
+| `Delete` | 工作被人工刪除（Online 區） | → 1 |
+| `Off_DEL` | 工作在 Offline 區被刪除 | → 1 |
+
+**範例**：
 
 | 場景 | RESULT 範例 | 說明 |
 |------|------------|------|
-| 列印完成 | `v1.1r1W80H35L40T0D8` | 帶完整列印參數 |
-| 固定參數列印 | `v1.1r1FW80H35L40T0D8` | `F` 表示使用者勾選「固定參數」 |
+| 列印完成 | `v1.1r1-W80H35L40T0D8` | 帶完整列印參數 |
+| 勾選固定參數 | `v1.1r1-FW80H35L40T0D8` | `F` 僅於勾選「固定參數」時加入 |
 | 移至離線 | `v1.1r1-OffLine` | 僅帶備註 |
 | 移至線上 | `v1.1r1-OnLine` | 僅帶備註 |
 | Online 刪除 | `v1.1r1-Delete` | 僅帶備註 |
 | Offline 刪除 | `v1.1r1-Off_DEL` | 僅帶備註 |
 
-> VERSION 取自 `version.py` 的 `VERSION` 常數（目前 `v1.1r1`），用於追蹤哪個版本的程式處理了該筆資料。
+> 程式版本號取自 `version.py` 的 `VERSION` 常數（目前 `v1.1r1`），用於追蹤哪個版本的程式處理了該筆資料。
 
 ---
 
@@ -698,9 +742,9 @@ RESULT 記錄每次狀態異動的來源資訊，格式由 `local_db.build_resul
 | 開啟頁面 / 重新整理 | `list_printers(site_id)` | 讀 Local Cache，正常可用 |
 | 新增 → 存檔 | `add_printer(data, online)` | 寫 Cache + 排 PENDING_OPS |
 | 編輯 → 存檔 | `save_printer(data, online)` | 寫 Cache + 排 PENDING_OPS |
-| 刪除 | `remove_printer(site, pid, online)` | 刪 Cache + 排 SRVDP020 + DELETE |
+| 刪除 | `remove_printer(site, pid, online)` | 刪 Cache + 排一筆 DELETE PENDING_OPS（對應 APILB005，後端 cascade 清子表）|
 
-> 刪除印表機涉及跨模組操作（SRVDP020 清除 DP_COMPDEVICE_LABEL），離線時排入兩筆 PENDING_OPS，上線後按順序 replay。
+> 刪除印表機由 APILB005 後端 Transaction cascade（先清 DP_COMPDEVICE_LABEL 子表再硬刪 LB_PRINTER），LBSB01 端只需排一筆 DELETE PENDING_OPS。
 
 ### Driver / 印表機 IP 互斥
 

@@ -46,7 +46,7 @@
 | 24 | 資料19 | DATA_19 | VARCHAR(512) | N | 依 BAR_TYPE 決定意義 |
 | 25 | 服務主機執行IP | SERVER_IP | VARCHAR(30) | N | Printer Server 執行當下的主機 IP |
 | 26 | 處理狀態 | STATUS | INT | Y | 0=新增 / 1=已印出 / 2=已移至離線區（數字比對） |
-| 27 | 列印結果識別碼 | RESULT | VARCHAR(100) | N | 列印版本+參數+操作備註（如 `v1.1r1_W80H35L40T0D8`、`v1.1r1_F1W80H35L40T0D8`、`v1.1r1-OffLine`） |
+| 27 | 列印結果註記 | RESULT | VARCHAR(100) | N | 列印版本+參數+操作備註（如 `v1.1r1-W80H35L40T0D8`、`v1.1r1-FW80H35L40T0D8`、`v1.1r1-OffLine`） |
 | 28 | 建立者 | CREATED_USER | VARCHAR(20) | Y | |
 | 29 | 建立時間 | CREATED_DATE | TIMESTAMP | Y | 標籤資料寫入時間，需間隔 1/1000 秒避免順序錯亂 |
 | 30 | 建立站點 | CREATED_SITE | VARCHAR(10) | Y | |
@@ -91,11 +91,23 @@
 ## 說明備註
 
 - **STATUS 狀態機**：0=新增（待印）→ 1=已印出；若被移至離線區則為 2。
-- **RESULT 格式範例**：
-  - 正常列印：`v1.1r1_W80H35L40T0D8` 或 `v1.1r1_F1W80H35L40T0D8`（格式：版本 + `_` + [`F1`] + 紙張/邊界/明暗度參數；`F1` 僅於勾選「固定」時加入）
-  - 離線：`v1.1r1-OffLine`
-  - 刪除：`v1.1r1-Delete`
-  - 離線刪除：`v1.1r1-Off_DEL`
+- **RESULT 格式**：
+  `[程式版本號]+'-'+[如果勾固定參數本欄為'F']+'W'+[寬]+'H'+[長]+'L'+[左位移]+'T'+[上位移]+'D'+[明暗值]+[備註]`
+- **備註代碼**（[備註] 內容）：
+
+  | 代碼 | 說明 | Status 變更 |
+  |------|------|-----------|
+  | `OnLine` | 工作被移至 Online 區 | 保持 |
+  | `OffLine` | 工作被移至離線區 | → 2 |
+  | `Delete` | 工作被人工刪除（Online 區） | → 1 |
+  | `Off_DEL` | 工作在 Offline 區被刪除 | → 1 |
+
+- **RESULT 範例**：
+  - 正常列印：`v1.1r1-W80H35L40T0D8`
+  - 勾選固定參數：`v1.1r1-FW80H35L40T0D8`（`F` 僅於勾選「固定參數」時加入）
+  - 移至離線：`v1.1r1-OffLine`
+  - Online 刪除：`v1.1r1-Delete`
+  - Offline 刪除：`v1.1r1-Off_DEL`
 - **DATA_1~DATA_19**：依 `BAR_TYPE` 決定各欄位意義，具體對應表請見 LB 模組規格。
 - **標準欄位**：CREATED_USER/CREATED_DATE/CREATED_SITE/UPDATED_USER/UPDATED_DATE/UPDATED_SITE/RES_ID/DELETED 依 CLAUDE.md 規範於 DDL 時補齊。
 

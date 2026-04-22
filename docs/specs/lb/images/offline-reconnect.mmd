@@ -1,14 +1,22 @@
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D6E4F0', 'primaryTextColor': '#003366', 'primaryBorderColor': '#1A5276', 'lineColor': '#2E86C1', 'fontSize': '13px'}, 'flowchart': {'nodeSpacing': 30, 'rankSpacing': 35}}}%%
 flowchart TB
-    START(["LBSB01 啟動<br/>authenticate() 載入 HARDCODED_TOKEN<br/>GET /api/health"]) --> CHECK{網路可達?}
+    START(["LBSB01 啟動<br/>authenticate() 載入 HARDCODED_TOKEN<br/>（無健康檢查 ping）"]) --> FIRSTSYNC["主畫面開啟後<br/>首次同步（_do_sync）<br/>Call APILB"]
 
-    CHECK -->|YES| ONLINE["<b>線上模式</b> 🟢<br/>session.online = True"]
-    CHECK -->|NO| OFFLINE["<b>離線模式</b> 🔴<br/>session.online = False"]
+    FIRSTSYNC --> CHECK{"Call APILB<br/>成功?"}
 
-    OFFLINE --> TIMER{{"重連計時器 every 60s<br/>健康檢查 GET /api/health → 可達?"}}
-    TIMER -->|NO| TIMER
-    TIMER -->|YES| SYNC["切換線上模式<br/>_sync_local_to_db() replay PENDING_OPS<br/>全量刷新 Local Cache"]
-    SYNC --> ONLINE
+    CHECK -->|YES| ONLINE["<b>線上模式</b> 🟢<br/>session.online = True<br/>停 OffLine Retry Timer"]
+    CHECK -->|NO<br/>逾時/5xx| OFFLINE["<b>離線模式</b> 🔴<br/>session.online = False<br/>啟動 OffLine Retry Timer"]
+
+    OFFLINE --> TIMER{{"OffLine Retry Timer<br/>每 3 分鐘觸發 _do_sync()"}}
+    OFFLINE --> MANUAL{{"使用者按 [更新]<br/>觸發 _do_sync()"}}
+
+    TIMER --> SYNC
+    MANUAL --> SYNC
+
+    SYNC["_sync_local_to_db()<br/>逐筆 replay PENDING_OPS<br/>（一律以 Local DB 蓋中央 DB）"]
+    SYNC --> RESULT{"任一筆<br/>API 成功?"}
+    RESULT -->|YES| ONLINE
+    RESULT -->|NO| OFFLINE
 
     OFFLINE -.-> OPS
 
@@ -21,6 +29,7 @@ flowchart TB
     end
 
     style START fill:#2E86C1,stroke:#1A5276,color:#FFF
+    style FIRSTSYNC fill:#5DADE2,stroke:#1A5276,color:#FFF
     style ONLINE fill:#27AE60,stroke:#1E8449,color:#FFF,stroke-width:2px
     style OFFLINE fill:#CC0000,stroke:#922B21,color:#FFF,stroke-width:2px
     style SYNC fill:#F5B041,stroke:#D35400,color:#333

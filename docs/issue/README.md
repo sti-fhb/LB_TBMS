@@ -31,6 +31,7 @@
 | [ISLB001](ISLB001-TOKEN與中央URL硬寫變更.md) | TOKEN 與中央 URL 硬寫變更 | HIGH | 待實作 |
 | [ISLB002](ISLB002-CP11-移除-data-8-13-14-15.md) | CP11 移除 DATA_8/13/14/15 + CP19 移除 DATA_13 | MEDIUM | 待實作 |
 | [ISLB003](ISLB003-CP01-移除-data-4-6-8-11.md) | CP01 標籤移除 DATA_4 / 6 / 8 / 11 | MEDIUM | 待實作 |
+| [ISLB004](ISLB004-離線原則對齊EA-UCLB101.md) | 離線原則對齊 EA UCLB101（移除健康檢查 + Timer 3 分鐘 + 以 Local 蓋中央）| HIGH | 待實作 |
 
 ## 與 `project_lb_unimplemented.md` 的關係
 

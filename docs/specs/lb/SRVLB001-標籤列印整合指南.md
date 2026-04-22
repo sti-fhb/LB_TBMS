@@ -54,7 +54,7 @@ Authorization: Bearer <你的模組 TOKEN>
 | `status` | int | N | `0` = Online Queue（預設）；`2` = Offline Queue（僅測試頁用） |
 
 > **不需要傳 `printer_id`**。中央 SRVLB001 會自動根據你的工作站 IP + bar_type，
-> 透過 SRVDP010（標籤印表機查詢服務）查出對應的印表機。
+> 透過 SRVDP010（資訊設備標籤印表機查詢）查出對應的印表機、連線資訊（SERVER_IP/port/校正參數）。
 > 若未設定對應關係，會回傳 `"資訊設備標籤要先設定"`。
 
 ### 2.3 Response

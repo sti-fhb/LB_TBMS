@@ -9,15 +9,13 @@ flowchart TD
 
     PICK --> SWITCH{"OP_TYPE?"}
 
-    SWITCH -->|"INSERT"| OP_INS["INSERT INTO 中央 {TARGET}<br/>（如 LB_PRINTER）<br/>PAYLOAD = 欄位值"]
-    SWITCH -->|"UPDATE"| OP_UPD["UPDATE 中央 {TARGET}<br/>PAYLOAD = SET 值 + WHERE 條件"]
-    SWITCH -->|"DELETE"| OP_DEL["DELETE FROM 中央 {TARGET}<br/>PAYLOAD = WHERE 條件"]
-    SWITCH -->|"CALL_SRV"| OP_SRV["HTTP Call 跨模組 SRV<br/>（如 SRVDP020）<br/>PAYLOAD = JSON Body"]
+    SWITCH -->|"INSERT"| OP_INS["HTTP POST 中央 API<br/>（如 APILB003 新增印表機）<br/>PAYLOAD = 欄位值"]
+    SWITCH -->|"UPDATE"| OP_UPD["HTTP PATCH 中央 API<br/>（如 APILB004 修改印表機）<br/>PAYLOAD = 部分欄位值"]
+    SWITCH -->|"DELETE"| OP_DEL["HTTP DELETE 中央 API<br/>（如 APILB005 刪除印表機，<br/>後端 cascade 清子表）<br/>PAYLOAD = WHERE 條件"]
 
     OP_INS --> RESULT
     OP_UPD --> RESULT
     OP_DEL --> RESULT
-    OP_SRV --> RESULT
 
     RESULT{"執行結果？"}
     RESULT -->|"成功"| MARK_OK["mark_op_synced(seq)<br/>STATUS → 1"]
@@ -35,14 +33,12 @@ flowchart TD
 
     subgraph EXAMPLE["範例：離線期間刪除印表機 PRN-004"]
         direction TB
-        EX1["SEQ=1: CALL_SRV / SRVDP020<br/>{site_id:S01, printer_id:PRN-004}<br/>→ 先清 DP 子表"]
-        EX2["SEQ=2: DELETE / LB_PRINTER<br/>{printer_id:PRN-004}<br/>→ 再刪主表"]
-        EX1 --> EX2
+        EX1["SEQ=1: DELETE / LB_PRINTER<br/>{printer_id:PRN-004}<br/>→ 對應 APILB005，後端 Transaction<br/>  cascade 清 DP_COMPDEVICE_LABEL<br/>  + 硬刪 LB_PRINTER（一次到位）"]
     end
 
     subgraph PENDING["PENDING_OPS Table"]
         direction LR
-        COL["SEQ | OP_TYPE | TARGET | PAYLOAD | STATUS<br/>───────────────────────────────────<br/>  1  | CALL_SRV | SRVDP020 | {site_id, pid} | 0→1<br/>  2  | DELETE   | LB_PRINTER | {pid}         | 0→1<br/>  3  | UPDATE  | LB_PRINTER | {data}         | 0→2 ❌"]
+        COL["SEQ | OP_TYPE | TARGET | PAYLOAD | STATUS<br/>───────────────────────────────────<br/>  1  | DELETE | LB_PRINTER | {pid}    | 0→1<br/>  2  | UPDATE | LB_PRINTER | {data}   | 0→2 ❌"]
     end
 
     style START fill:#27AE60,stroke:#1E8449,color:#FFF,stroke-width:2px
@@ -53,6 +49,5 @@ flowchart TD
     style OP_INS fill:#D6E4F0,stroke:#1A5276
     style OP_UPD fill:#D6E4F0,stroke:#1A5276
     style OP_DEL fill:#D6E4F0,stroke:#1A5276
-    style OP_SRV fill:#D6E4F0,stroke:#1A5276
     style EXAMPLE fill:#FEF9E7,stroke:#D4AC0D,stroke-width:1px
     style PENDING fill:#F5EEF8,stroke:#8E44AD,stroke-width:1px
