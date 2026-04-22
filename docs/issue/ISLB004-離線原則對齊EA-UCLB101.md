@@ -3,7 +3,7 @@
 **建立日期**: 2026-04-22
 **優先順序**: HIGH
 **類型**: 架構變更（修訂 R03）
-**狀態**: 待實作
+**狀態**: 待 PG 實作（SA 側文件與 EA 模型已全部就緒）
 **依據**: EA UCLB101 「離線原則」Rule（GUID `{2B94E1A9-8051-4083-BA45-80732128CA0C}`）
 
 ---
@@ -117,32 +117,32 @@ def _do_sync(self):
 | `docs/specs/lb/LBSB01-開發者指南.md` | §2.4 / §4 / §5 / §6 / §7 / §8 全面改寫；移除 `HEALTH_CHECK_PATH`；重寫 §6.4 為「OffLine Retry Timer + [更新]」|
 | `docs/specs/lb/LBSB01-操作手冊.md` | §2.1~2.4 / 附錄 A：移除健康檢查敘述；新增 [更新] 按鈕說明；Timer 3 分鐘 |
 | `docs/specs/lb/contracts/srv-contracts.md` | 移除「健康檢查端點（待主專案定義）」小節，改為「離線偵測規則」 |
-| `docs/specs/lb/images/offline-reconnect.mmd` + `.png` | 重繪流程：首次同步 → API 成功? → 線上/離線；離線時 3 分鐘 Timer + [更新] 兩個觸發源 |
-| `docs/specs/lb/images/uclb001-flow.png` | 由 EA `UCLB001-標籤列印使用案例` Diagram 重匯（原 `LBL001`）|
-| `docs/specs/lb/images/uclb002-usecase.png` | 新增，由 EA UCLB002 UseCase Diagram 匯出 |
-| `docs/specs/lb/images/uclb002-flow.png` | 由 EA UCLB002 Activity Diagram 重匯 |
-| `docs/specs/lb/images/uclb101-flow.png` | 由 EA UCLB101 Activity Diagram 重匯（權威離線流程圖）|
+| ~~`docs/specs/lb/images/offline-reconnect.mmd` + `.png`~~ | 已廢除（2026-04-22）：mermaid 衍生 PNG 全面移除，改以 `uclb101-flow.png` 為離線流程權威圖 |
+| `docs/specs/lb/images/uclb001-flow.png` | 由 EA `UCLB001-標籤列印使用案例` Diagram 重匯（原 `LBL001`，已改名 + 改 Type 為 Activity）|
+| `docs/specs/lb/images/uclb002-usecase.png` | 由 EA UCLB002 UseCase Diagram 匯出 |
+| `docs/specs/lb/images/uclb002-flow.png` | 由 EA UCLB002 Activity Diagram 匯出 |
+| `docs/specs/lb/images/uclb101-flow.png` | 由 EA UCLB101 Activity Diagram 匯出（含 OffLine Retry Timer、離線原則 Rule，為離線流程權威圖）|
+| `docs/specs/lb/images/srvlb001-architecture.png` | 由 EA `SRVLB001-標籤列印通用API` CompositeStructure Diagram 匯出 |
 
 ---
 
-## 5. EA 側需手動處理（SA 責任）
+## 5. EA 側人工處理項目
 
-以下項目需要在 EA GUI 手動處理（MCP SQL 為唯讀，無法改 Diagram Type）：
+全部已完成（2026-04-22）：
 
-1. **LBL001 Diagram 改 Type**：
-   - Diagram: `UCLB001-標籤列印使用案例`（Diagram_ID `-1717655739`，已改名）
-   - Type 目前：`Use Case`
-   - 應改為：`Activity`（內容為 Step / ControlFlow 活動流程）
-   - 操作：EA 中開啟該 Diagram → Right-click → Properties → Type 改為 `Activity`
-   - 改完後重匯 `uclb001-flow.png`
+| # | 項目 | 狀態 |
+|---|------|------|
+| Q1a | `LBL001-標籤印出案例` Diagram 改名為 `UCLB001-標籤列印使用案例` | ✅ 完成（MCP 改名）|
+| Q1b | 同 Diagram Type 由 `Use Case` 改為 `Activity` | ✅ 完成（EA GUI 手動）|
+| Q2 | LBL001 左側大 Block 用途 — 確認為 Drill-Down 到 `SRVLB001-標籤列印通用API` CompositeStructure | ✅ 維持現狀（合理設計）|
+| Q3 | 5 個印表機 CRUD Step — 確認 Classifier 已指向對應 APILB001~005（`<<API>>`）| ✅ 維持現狀（合理設計）|
+| Q4 | `LBSB01 專用Token` Data → 拉 `Dependency<<IN>>` 到 `接收列印指令 StepN` | ✅ 完成（MCP 新增 connector `1776848339`）|
+| Q5 | UCLB002 Activity 泳道 — 確認 `BMS使用者` DEP 已存在 (GUID `{528DB43D-A799-4f1b-B3FC-64F3FF39BAFA}`) | ✅ 維持現狀（本就有）|
+| Q6 | UCLB101 的 `On Line QUEUE` / `Off Line QUEUE` Step Classifier 指向新建的 `Activity<<Data>>` 物件 | ✅ 完成（新建 `Online Queue` id 588021784、`Offline Queue` id -1650599665）|
+| Q7 | UCLB101 的「補印」Step | ✅ 使用者採納（改 `<<Flow>>` 指 UCLB002 或刪除）|
 
-2. **UCLB 其他圖內微調**（Q2~Q7，與本 issue 不衝突時可緩處理）：
-   - Q2：LBL001 左側大 Block 的用途／補文字
-   - Q3：印表機 CRUD 五個 Step 是否改 `<<功能選項>>` 或補 ControlFlow
-   - Q4：`LBSB01 專用Token` Data 物件 → 拉 `Dependency<<IN>>` 到 StepN
-   - Q5：UCLB002 Activity 是否補 DEP 泳道
-   - Q6：UCLB101 的 `On Line QUEUE` / `Off Line QUEUE` 改 `<<Data>>` / `<<object>>`
-   - Q7（已採用）：UCLB101 的「補印」Step 改為 `<<Flow>>` 指 UCLB002 或刪除
+另外同批處理：
+- `ET-教育訓練 UseCase` Diagram 改名為 `ET-教育訓練`（與 Parent Collaboration 同名）✅
 
 ---
 
