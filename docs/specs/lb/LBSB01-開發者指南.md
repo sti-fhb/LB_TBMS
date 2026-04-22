@@ -378,9 +378,23 @@ def remove_printer(self, site_id, printer_id, online: bool):
 
 ### 6.6 同步動作（_sync_local_to_db）
 
-由 OffLine Retry Timer（3 分鐘）或 [更新] 按鈕觸發時執行，replay 累積的 PENDING_OPS；策略為「**一律以 Local DB 蓋中央 DB**」：
+由 OffLine Retry Timer（3 分鐘）或 [更新] 按鈕觸發時執行，replay 累積的 PENDING_OPS；策略為「**一律以 Local DB 蓋中央 DB**」。
 
-![Local → Main DB 同步流程](images/local-sync-flow.png)
+**同步步驟**：
+
+1. 讀取 `PENDING_OPS WHERE STATUS=0 ORDER BY SEQ`
+2. 逐筆取出 `(OP_TYPE, TARGET, PAYLOAD)`
+3. 依 OP_TYPE 呼叫對應 APILB：
+   - `INSERT` → `POST /api/lb/...`（對應 APILB003 / APILB007）
+   - `UPDATE` → `PATCH /api/lb/...`（對應 APILB004 / APILB006）
+   - `DELETE` → `DELETE /api/lb/...`（對應 APILB005）
+4. 執行結果處理：
+   - 成功 → `mark_op_synced(seq)`，STATUS → 1
+   - 失敗（非 404）→ `mark_op_failed(seq)`，STATUS → 2，不阻塞後續
+   - UPDATE / DELETE 回 404 → 視為同步成功（中央已無該筆，Local-first 語意）
+5. 全部處理完畢，不從中央刷新 Local（以 Local 為準）
+
+> 離線流程權威圖見 [UCLB101 內部功能流程](images/uclb101-flow.png)。
 
 ### 6.7 離線範例：刪除印表機
 
@@ -598,7 +612,14 @@ LBSB01                                     中央 TBMS
 
 外部模組（BC/CP/BS/TL）不直接與 LBSB01 通訊，一律透過中央 SRVLB001 進行路由：
 
-![SRVLB001 呼叫時序圖](images/srvlb001-sequence.png)
+```
+Client(BC/CP/BS/TL)  →  中央 SRVLB001  →  LBSB01(:9200)  →  印表機
+                        ├─ 解析 PRINTER_ID（SRVDP010）
+                        ├─ INSERT LB_PRINT_LOG（Status=0）
+                        └─ POST /api/lb/task
+```
+
+完整處理流程見 `contracts/srv-contracts.md` §SRVLB001；SRVLB001 內部步驟（判斷格式一/二、POST 錯誤回寫 Log 等）見 [UCLB001](images/uclb001-flow.png) 左側 Block 內 Drill-Down 圖 `SRVLB001-標籤列印通用API`（CompositeStructure）。
 
 > 一台 LBSB01 可管理多台實體印表機，中央以 `LB_PRINTER.SERVER_IP` 決定派送到哪台 LBSB01。
 
@@ -638,7 +659,16 @@ LBSB01 啟動時開啟 HTTP Server，接收中央或本機的列印指令：
 
 **Listener 收到 Task 後的處理流程**（含 GUI Thread-Safe 通知機制）：
 
-![Task Listener 處理流程](images/task-listener-flow.png)
+```
+HTTP POST /api/lb/task 進入
+  │
+  ├─ 驗證 Bearer Token（離線時略過）
+  ├─ 解析 Body JSON → Task
+  ├─ local_db.insert_print_log(task)            # 寫 LB_PRINT_LOG_CACHE
+  ├─ local_db.enqueue(task)                     # Status=0 → ONLINE_QUEUE / Status=2 → OFFLINE_QUEUE
+  ├─ app._task_event_queue.put_nowait("...")    # 放旗標，由 Main Thread poll 後刷新 GUI
+  └─ 回傳 { success: true, uuid }
+```
 
 ### 9.4 GUI 通知機制（Thread-Safe）
 
@@ -664,7 +694,11 @@ def _poll_task_events(self):
 
 測試頁（[sample_data_print.py](Source/Python/LBSB01/sample_data_print.py)）不另開獨立列印通道，走**同一條 Task Listener 路徑**：
 
-![標籤測試頁流程](images/srvlb001-sequence-a.png)
+```
+測試頁 → POST http://localhost:9200/api/lb/task   (Body: {uuid, bar_type, data_*, status=2, ...})
+              │
+              └─→ Task Listener 處理（同 §9.3）→ 寫 local.db → Status=2 進 Offline Queue
+```
 
 **這樣設計的好處**：
 - 驗證整條路徑（Listener → local.db → Queue → GUI）是否正常
@@ -673,7 +707,20 @@ def _poll_task_events(self):
 
 ### 9.6 狀態流轉（Status State Machine）
 
-![Queue 狀態機](images/queue-state-machine.png)
+```
+          insert_print_log(Status=0)
+   ─────→  [0] 待列印 (Online Queue)
+              │
+              ├─ delete_queue_task(online=True) ──→ [1] 終態（RESULT=-Delete）
+              ├─ move_task_to_offline() ─────────→ [2] 離線 (Offline Queue)
+              └─ 列印完成 update_print_log ──────→ [1] 終態（RESULT=W..H..L..T..D..）
+
+          insert_print_log(Status=2, 測試頁)
+   ─────→  [2] 離線 (Offline Queue)
+              │
+              ├─ delete_queue_task(online=False) ─→ [1] 終態（RESULT=-Off_DEL）
+              └─ move_task_to_online() ──────────→ [0] 待列印 (Online Queue)
+```
 
 | 動作 | Status 變更 | RESULT 寫入 | local_db 方法 |
 |------|------------|------------|--------------|

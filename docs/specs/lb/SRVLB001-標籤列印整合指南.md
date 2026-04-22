@@ -119,7 +119,7 @@ Authorization: Bearer <你的模組 TOKEN>
      │    message: "OK" }  │                    │                  │                │
 ```
 
-> 完整時序圖見 [images/srvlb001-sequence.png](images/srvlb001-sequence.png)
+> 完整 SRVLB001 處理流程見 `contracts/srv-contracts.md` §SRVLB001；內部步驟 Drill-Down 見 [UCLB001](images/uclb001-flow.png) 中 SRVLB001 Block 的 CompositeStructure 子圖（EA：`SRVLB001-標籤列印通用API`）。
 
 ---
 
