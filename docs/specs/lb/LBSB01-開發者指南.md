@@ -285,7 +285,7 @@ local.db
 
 ### 6.3 線上/離線模式判定
 
-![LBSB01 內部功能流程（UCLB101，離線原則權威圖）](images/uclb101-flow.png)
+![LBSB01 內部功能流程（UCLB101，離線原則權威圖）](usecase/UCLB101-LBSB01內部功能流程.png)
 
 > **離線判定**：不做獨立 `GET /api/health` ping。程式 Call APILB（如 APILB001 取清單、APILB006 回報事件）時：
 > - 成功（200） → `session.online = True`
@@ -394,7 +394,7 @@ def remove_printer(self, site_id, printer_id, online: bool):
    - UPDATE / DELETE 回 404 → 視為同步成功（中央已無該筆，Local-first 語意）
 5. 全部處理完畢，不從中央刷新 Local（以 Local 為準）
 
-> 離線流程權威圖見 [UCLB101 內部功能流程](images/uclb101-flow.png)。
+> 離線流程權威圖見 [UCLB101 內部功能流程](usecase/UCLB101-LBSB01內部功能流程.png)。
 
 ### 6.7 離線範例：刪除印表機
 
@@ -606,7 +606,7 @@ LBSB01                                     中央 TBMS
 
 ### 9.1 架構總覽
 
-![SRVLB001 架構圖](images/srvlb001-architecture.png)
+![SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)
 
 ### 9.2 SRVLB001 中央派送流程
 

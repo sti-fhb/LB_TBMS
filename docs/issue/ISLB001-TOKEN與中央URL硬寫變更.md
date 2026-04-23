@@ -131,7 +131,7 @@ site_name = 總院捐血中心
 - [docs/specs/lb/LBSB01-操作手冊.md](../specs/lb/LBSB01-操作手冊.md) — §2.2 認證機制、§2.3 config.ini
 - [docs/specs/lb/spec.md](../specs/lb/spec.md) — R02 / R03 核心特性
 - [docs/specs/lb/contracts/srv-contracts.md](../specs/lb/contracts/srv-contracts.md) — 離線偵測規則
-- [docs/specs/lb/images/uclb101-flow.png](../specs/lb/images/uclb101-flow.png) — LBSB01 內部功能流程（含離線原則 Rule 與 OffLine Retry Timer）
+- [docs/specs/lb/usecase/UCLB101-LBSB01內部功能流程.png](../specs/lb/usecase/UCLB101-LBSB01內部功能流程.png) — LBSB01 內部功能流程（含離線原則 Rule 與 OffLine Retry Timer）
 - [ISLB004-離線原則對齊EA-UCLB101.md](ISLB004-離線原則對齊EA-UCLB101.md) — 取代本 Issue 的健康檢查機制
 
 ---

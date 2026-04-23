@@ -11,7 +11,7 @@
 
 ## 1. 架構總覽
 
-![SRVLB001 架構圖](images/srvlb001-architecture.png)
+![SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)
 
 **重點**：呼叫端只需 Call SRVLB001，中央負責路由到正確的 Printer Server。
 
