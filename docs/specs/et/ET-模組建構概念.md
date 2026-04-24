@@ -209,7 +209,7 @@ ET 模組涉及四個角色，功能需求沿角色分流：
 
 ## 6. 延伸閱讀
 
-- **需求清單**：[../../requirements/RQET.md](../../requirements/RQET.md)（RQET001~008 + RQDP041~043 / RQDM001 cross-reference）
+- **需求清單**：[../../requirements/RQET.md](../../requirements/RQET.md)（RQET001~009 + RQDP041~043 cross-reference；RQET009 為原 RQDM001）
 - **UseCase 清單**：[../../use-cases/et/](../../use-cases/et/)（12 個 UCET001~012）
 - **Moodle 功能清單**：[functions/README.md](functions/README.md)（19 個 ET01~19）
 - **契約（待建）**：[contracts/](contracts/)
