@@ -119,7 +119,7 @@ Authorization: Bearer <你的模組 TOKEN>
      │    message: "OK" }  │                    │                  │                │
 ```
 
-> 完整 SRVLB001 處理流程見 `contracts/SRVLB001.md` §SRVLB001；內部步驟參考 [UCLB001](usecase/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
+> 完整 SRVLB001 處理流程見 `contracts/SRVLB001.md` §SRVLB001；內部步驟參考 [UCLB001](../../use-cases/lb/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
 
 ---
 

@@ -43,18 +43,18 @@ _LB/
 │       └── LBSB01{YYYYMMDD}.log ← 每日系統 Log
 │
 ├── docs/
-│   └── specs/lb/
-│       ├── LBSB01-操作手冊.md       ← 操作人員用
-│       ├── LBSB01-開發者指南.md     ← ← 本文件
-│       ├── SRVLB001-標籤列印整合指南.md
-│       ├── spec.md                  ← 功能規格（總檔）+ Clarifications + User Stories 索引
-│       ├── spec_us1.md ~ spec_us6.md ← 6 支 User Story 子檔
-│       ├── data-model.md            ← 資料模型 + ERD
-│       ├── usecase/                 ← 各 UC 的 Activity Diagram (PNG)
-│       └── contracts/               ← SRV/API 契約（一 SRV/API 一檔，Client 視角）
-│           ├── README.md            ← 契約索引
-│           ├── SRVLB001.md ~ APILB007.md
-│           └── SRVLB001-*.png / SRVDP010-*.png ← EA 匯出的服務架構圖
+│   ├── specs/lb/
+│   │   ├── LBSB01-操作手冊.md       ← 操作人員用
+│   │   ├── LBSB01-開發者指南.md     ← ← 本文件
+│   │   ├── SRVLB001-標籤列印整合指南.md
+│   │   ├── spec.md                  ← 功能規格（總檔）+ Clarifications + User Stories 索引
+│   │   ├── spec_us1.md ~ spec_us6.md ← 6 支 User Story 子檔
+│   │   ├── data-model.md            ← 資料模型 + ERD
+│   │   └── contracts/               ← SRV/API 契約（一 SRV/API 一檔，Client 視角）
+│   │       ├── README.md            ← 契約索引
+│   │       ├── SRVLB001.md ~ APILB007.md
+│   │       └── SRVLB001-*.png / SRVDP010-*.png ← EA 匯出的服務架構圖
+│   └── use-cases/lb/                ← 各 UC 的 Activity Diagram (PNG)
 ```
 
 ---
@@ -289,7 +289,7 @@ local.db
 
 ### 6.3 線上/離線模式判定
 
-![LBSB01 內部功能流程（UCLB101，離線原則權威圖）](usecase/UCLB101-LBSB01內部功能流程.png)
+![LBSB01 內部功能流程（UCLB101，離線原則權威圖）](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png)
 
 > **離線判定**：不做獨立 `GET /api/health` ping。程式 Call APILB（如 APILB001 取清單、APILB006 回報事件）時：
 > - 成功（200） → `session.online = True`
@@ -398,7 +398,7 @@ def remove_printer(self, site_id, printer_id, online: bool):
    - UPDATE / DELETE 回 404 → 視為同步成功（中央已無該筆，Local-first 語意）
 5. 全部處理完畢，不從中央刷新 Local（以 Local 為準）
 
-> 離線流程權威圖見 [UCLB101 內部功能流程](usecase/UCLB101-LBSB01內部功能流程.png)。
+> 離線流程權威圖見 [UCLB101 內部功能流程](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png)。
 
 ### 6.7 離線範例：刪除印表機
 
@@ -623,7 +623,7 @@ Client(BC/CP/BS/TL)  →  中央 SRVLB001  →  LBSB01(:9200)  →  印表機
                         └─ POST /api/lb/task
 ```
 
-完整處理流程見 [contracts/SRVLB001.md](contracts/SRVLB001.md)（Client 視角）與主專案 TBMS `docs/specs/lb/contracts/SRVLB001.md`（Server 實作）；SRVLB001 內部步驟（判斷格式一/二、POST 錯誤回寫 Log 等）見 [UCLB001](usecase/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
+完整處理流程見 [contracts/SRVLB001.md](contracts/SRVLB001.md)（Client 視角）與主專案 TBMS `docs/specs/lb/contracts/SRVLB001.md`（Server 實作）；SRVLB001 內部步驟（判斷格式一/二、POST 錯誤回寫 Log 等）見 [UCLB001](../../use-cases/lb/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
 
 > 一台 LBSB01 可管理多台實體印表機，中央以 `LB_PRINTER.SERVER_IP` 決定派送到哪台 LBSB01。
 

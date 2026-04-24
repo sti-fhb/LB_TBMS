@@ -34,12 +34,12 @@
 | 項目 | 說明 |
 |------|------|
 | UseCase | UCLB002 — 標籤列印紀錄查詢及補印標籤 |
-| Activity 圖 | [UCLB002-標籤列印紀錄查詢及補印標籤.png](./usecase/UCLB002-標籤列印紀錄查詢及補印標籤.png) |
+| Activity 圖 | [UCLB002-標籤列印紀錄查詢及補印標籤.png](../../use-cases/lb/UCLB002-標籤列印紀錄查詢及補印標籤.png) |
 | 中央 SRV（查詢）| [SRVLB012](./contracts/SRVLB012.md)（標籤列印紀錄查詢） |
 | 中央 SRV（補印）| [SRVLB001](./contracts/SRVLB001.md) 格式二（`printer_id` + `log_uuid`） |
 | 中央 API | [APILB007](./contracts/APILB007.md)（進件寫 LOG，補印亦經此寫新紀錄） |
 
-![UCLB002-標籤列印紀錄查詢及補印標籤](./usecase/UCLB002-標籤列印紀錄查詢及補印標籤.png)
+![UCLB002-標籤列印紀錄查詢及補印標籤](../../use-cases/lb/UCLB002-標籤列印紀錄查詢及補印標籤.png)
 
 ## 查詢條件
 

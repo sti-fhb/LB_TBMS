@@ -31,13 +31,13 @@ Client 端模組（BC 採血 / CP 成分 / BS 供應 / TL 檢驗）透過 SRVLB0
 | 項目 | 說明 |
 |------|------|
 | UseCase | UCLB001 — 標籤列印 |
-| Activity 圖 | [UCLB001-標籤列印使用案例.png](./usecase/UCLB001-標籤列印使用案例.png) |
+| Activity 圖 | [UCLB001-標籤列印使用案例.png](../../use-cases/lb/UCLB001-標籤列印使用案例.png) |
 | 中央 SRV | [SRVLB001](./contracts/SRVLB001.md)（標籤列印通用 API） |
 | 支援 SRV | [SRVDP010](./contracts/SRVDP010.md)（印表機解析，格式一使用） |
 | 中央 API | [APILB007](./contracts/APILB007.md)（進件寫 LOG），[APILB006](./contracts/APILB006.md)（回報狀態事件） |
 | LBSB01 內部 | Task Listener（:9200）、Online/Offline Queue、DB Log Queue |
 
-![UCLB001-標籤列印使用案例](./usecase/UCLB001-標籤列印使用案例.png)
+![UCLB001-標籤列印使用案例](../../use-cases/lb/UCLB001-標籤列印使用案例.png)
 
 ## 主畫面結構（LBSB01）
 

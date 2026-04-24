@@ -32,12 +32,12 @@ LBSB01 程式的內部運作模型：啟動時處理未同步資料、常駐 Tas
 | 項目 | 說明 |
 |------|------|
 | UseCase | UCLB101 — LBSB01 內部功能流程 |
-| Activity 圖 | [UCLB101-LBSB01內部功能流程.png](./usecase/UCLB101-LBSB01內部功能流程.png) |
+| Activity 圖 | [UCLB101-LBSB01內部功能流程.png](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png) |
 | 對外 API（狀態回報）| [APILB006](./contracts/APILB006.md)（回報列印事件），[APILB007](./contracts/APILB007.md)（進件寫 LOG） |
 | 中央入口 | 收 Task：LBSB01 Listener `:9200/api/lb/task`（由中央 SRVLB001 POST 進來） |
 | EA Rule | 「離線原則」GUID `{2B94E1A9-8051-4083-BA45-80732128CA0C}` |
 
-![UCLB101-LBSB01 內部功能流程](./usecase/UCLB101-LBSB01內部功能流程.png)
+![UCLB101-LBSB01 內部功能流程](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png)
 
 ## 三層 Queue 架構
 
