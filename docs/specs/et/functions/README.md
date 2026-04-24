@@ -24,6 +24,6 @@
 | [ET14](ET14-課程頁面瀏覽.md) | 課程頁面瀏覽 | Course page | UCET003, UCET008 |
 | [ET15](ET15-測驗作答.md) | 測驗作答 | Quiz → Attempt quiz | UCET009 |
 | [ET16](ET16-個人成績查看.md) | 個人成績查看 | User menu → Grades | UCET010 |
-| [ET17](ET17-Wiki模組.md) | Wiki 模組（SOP 文件） | Add activity → Wiki | UCET011 |
-| [ET18](ET18-書籍模組.md) | 書籍模組（操作手冊） | Add resource → Book | UCET012 |
+| ~~ET17~~ | ~~Wiki 模組（SOP 文件）~~ | — | **已廢棄，改由 DM 模組 UCDM001 處理**（[詳](ET17-Wiki模組.md)）|
+| ~~ET18~~ | ~~書籍模組（操作手冊）~~ | — | **已廢棄，改由 DM 模組 UCDM002 處理**（[詳](ET18-書籍模組.md)）|
 | [ET19](ET19-寄發課程邀請信.md) | 寄發課程邀請信 | enrol_invitation Plugin | UCET005, UCET007 |
