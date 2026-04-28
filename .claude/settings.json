@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(reg query *)",
+      "PowerShell(Get-ChildItem \"HKCU:\\\\Software\\\\Sparx Systems\\\\EAAddins\" -ErrorAction SilentlyContinue | ForEach-Object { $p = $_.PSChildName; $v = Get-ItemProperty $_.PSPath; \"$p => Default='$\\($v.'\\(default\\)'\\)' DLL='$\\($v.DLL\\)' CallListed='$\\($v.CallListed\\)'\" })",
+      "PowerShell($progId = \"ClassifierTagSync.Addin\"; $clsid = \\(Get-ItemProperty \"HKCR:\\\\$progId\\\\CLSID\" -ErrorAction SilentlyContinue\\).'\\(default\\)'; \"ProgID CLSID: $clsid\"; if \\($clsid\\) { $codebase = \\(Get-ItemProperty \"HKCR:\\\\CLSID\\\\$clsid\\\\InprocServer32\" -ErrorAction SilentlyContinue\\).CodeBase; \"CodeBase: $codebase\"; $asm = \\(Get-ItemProperty \"HKCR:\\\\CLSID\\\\$clsid\\\\InprocServer32\" -ErrorAction SilentlyContinue\\).Assembly; \"Assembly: $asm\" })",
+      "Bash(mmdc --version)",
+      "Bash(npx --yes -p @mermaid-js/mermaid-cli@latest mmdc --version)",
+      "Bash(npx --yes -p @mermaid-js/mermaid-cli@latest mmdc -i offline-reconnect.mmd -o offline-reconnect.png -b white)",
+      "PowerShell(& \"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" build \"C:\\\\TSBMS\\\\EA_TOOL\\\\ClassifierTagSync\\\\ClassifierTagSync.csproj\" -c Release 2>&1)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "mcp__sparx-ea__clear_dd_cache",
+      "Read(//c/TSBMS/_LB/**)",
+      "Bash(git show *)",
+      "Read(//tmp/**)",
+      "Read(//c/tmp/**)",
+      "Bash(git reset *)"
+    ],
+    "additionalDirectories": [
+      "C:\\TSBMS\\EA_TOOL"
+    ]
+  }
+}

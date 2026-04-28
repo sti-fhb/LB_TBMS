@@ -39,7 +39,7 @@
 
 - [ET-模組建構概念.md §5.1 階段 1：平台建置](ET-模組建構概念.md#51-建議的進行順序) — 本文件即該階段的交付成果
 - [ET-模組建構概念.md §5.3 建議的技術選型](ET-模組建構概念.md#53-建議的技術選型) — 版本 / 部署方式 / DB 的決策基礎
-- [Moodle認證整合-方案比較.md](../dp/Moodle認證整合-方案比較.md) — 若採方案 B（Custom API），安裝步驟需涵蓋 `auth/tsbms/` plugin 的部署
+- SS 模組規格（主專案 `TBMS/docs/specs/ss/spec.md`）— 安裝步驟需涵蓋 `auth/tsbms/` plugin（呼叫 APISS001 / APISS002）的部署
 
 ---
 
@@ -96,4 +96,4 @@
 - Moodle Database activity 特性與缺口（查自 docs.moodle.org）
 - Moodle Plugin 只能 PHP（查自 moodledev.io）
 - Moodle 支援的免費 DB：PostgreSQL 13+、MySQL 8.0+、MariaDB 10.6.7+
-- Moodle 整合六接點：SSO、URL Resource、LTI 1.3、Book 做導讀、Web Services API、線上操作手冊
+- Moodle 整合六接點：SS、URL Resource、LTI 1.3、Book 做導讀、Web Services API、線上操作手冊
