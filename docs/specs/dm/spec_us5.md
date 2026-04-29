@@ -15,7 +15,7 @@
 3. **Given** ET 模組課程章節以連結引用 DM 教材固定 URL（`https://dm.tbms.internal/doc/{DOC_ID}`），**When** 學員點選連結，**Then** DM 回最新發布版內容
 4. **Given** 一份文件已撤回（STATUS=WITHDRAWN），**When** 使用者點選對應 URL，**Then** DM 回 410 Gone，搭配「此文件已撤回」頁
 5. **Given** DM 端版本切換（V1.0 → V2.0 核准發布），**When** ET 模組課程或主系統下次點同一連結，**Then** 自動指向最新版（無需 ET / 主系統介入）
-6. **Given** 歷史版本目錄被外部 URL 直接存取，**When** 任何來源嘗試，**Then** DM 後端 reject 403；歷史版實體檔案僅能透過 DM 「查看版本歷程」介面下載（驗權限後後端轉發）
+6. **Given** 歷史版本目錄被外部 URL 直接存取，**When** 任何來源嘗試，**Then** DM 後端 reject 403；歷史版實體檔案僅能透過 DM「查看版本歷程」介面下載（具 DM02 功能權限即可由後端轉發；系統權限管控僅至功能層）
 
 ## Activity Diagram（UC 內部流程）
 
@@ -38,7 +38,7 @@ flowchart LR
     Status -->|WITHDRAWN| Gone[410 Gone<br/>「此文件已撤回」頁]
 
     View --> History{需查歷史版本?}
-    History -->|是| HistDir[需具權限<br/>透過 DM 後端轉發下載<br/>歷史版本目錄不開放外部 URL]
+    History -->|是| HistDir[透過 DM 後端轉發下載<br/>具 DM02 功能權限即可<br/>歷史版本目錄不開放外部 URL]
     History -->|否| End([結束])
 
     DirectURL[/外部直接訪問<br/>歷史版本目錄/] -.->|被擋| Forbidden[403 Forbidden]
