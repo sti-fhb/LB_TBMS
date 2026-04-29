@@ -18,7 +18,43 @@
 6. **Given** 使用者所屬角色於 SS 端尚無功能對應，**When** 登入成功，**Then** Moodle 僅顯示登入後首頁，課程 / 教材列表為空
 7. **Given** 使用期間 Moodle 定期呼叫 APISS002 驗 Token，**When** Token 過期 / 帳號停用 / 密碼變更，**Then** SS 回 401，Moodle 強制登出並導回登入頁
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([開始]) --> A[使用者開啟 Moodle URL]
+    A --> B[Moodle 顯示登入頁]
+    B --> C[使用者輸入 SS 帳號 / 密碼]
+    C --> D[auth/tsbms plugin 呼叫 APISS001]
+    D --> E{SS 回應}
+
+    E -->|200 OK| F[Moodle upsert 使用者<br/>依 roles 指派 Moodle 系統角色<br/>Manager / Teacher / Student]
+    F --> G[Token + functions 寫入 session]
+    G --> H[進入 Moodle 首頁<br/>依 functions 渲染]
+    H --> End1([結束 ✓])
+
+    E -->|401<br/>INVALID_CREDENTIAL| I1[顯示「帳號或密碼錯誤」]
+    E -->|403<br/>ACCOUNT_DISABLED<br/>/ ACCOUNT_LOCKED| I2[顯示帳號停用 / 鎖定]
+    E -->|426<br/>PASSWORD_CHANGE| I3[導向 SS 變更密碼頁]
+    E -->|逾時 / SS 不可達| I4[顯示「系統錯誤，請稍後再試」]
+
+    I1 --> End2([結束 ✗])
+    I2 --> End2
+    I3 --> End2
+    I4 --> End2
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,End1,End2 startEnd
+    class A,B,C,D,F,G,H action
+    class E decision
+    class I1,I2,I3,I4 errorAction
+```
+
+## Sequence Diagram（互動序列）
 
 ```mermaid
 sequenceDiagram
@@ -65,8 +101,6 @@ sequenceDiagram
     end
 ```
 
-> **詳細 Activity Diagram（含 swim lane 與 Step classifier）**：見 [UCET013-登入線上學習平台（SS）.md](../../use-cases/et/UCET013-登入線上學習平台（SS）.md)（EA 匯出 PNG）
->
 > SS 端認證流程詳見 SS 模組規格（主專案 `TBMS/docs/specs/ss/spec.md`）§User Story 5。
 
 ## 對應 RQ

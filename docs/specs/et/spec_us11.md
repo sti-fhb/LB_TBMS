@@ -14,9 +14,25 @@
 2. **Given** 學員已參加測驗，**When** 查看儀表板測驗成績區，**Then** Moodle 顯示各測驗最佳成績
 3. **Given** 學員點選某課程，**When** 進入課程頁，**Then** 可從上次離開處繼續學習
 
-## 流程圖
+## Activity Diagram（UC 內部流程）
 
-![](../../use-cases/et/UCET010-查看個人學習進度.png)
+```mermaid
+flowchart TD
+    Start([學員進入「我的學習」儀表板]) --> Show[Moodle 顯示各課程完成百分比]
+    Show --> Choice{操作}
+    Choice -->|查看測驗成績| Q[顯示各測驗最佳成績]
+    Choice -->|繼續學習| Continue[點選某課程<br/>從上次離開處繼續]
+    Q --> End([結束])
+    Continue --> End
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+
+    class Start,End startEnd
+    class Show,Q,Continue action
+    class Choice decision
+```
 
 ## 對應 RQ
 

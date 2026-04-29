@@ -15,9 +15,28 @@
 3. **Given** 管理者查看測驗成績，**When** 進入成績分佈圖，**Then** Moodle 顯示成績分佈統計
 4. **Given** 管理者需要匯出報表，**When** 點擊「匯出 CSV / Excel」，**Then** Moodle 產出報表檔案
 
-## 流程圖
+## Activity Diagram（UC 內部流程）
 
-![](../../use-cases/et/UCET006-檢視學習報表與完課率.png)
+```mermaid
+flowchart TD
+    Start([管理者進入課程報表頁]) --> Show[Moodle 顯示完課率統計<br/>已完成 / 進行中 / 未開始]
+    Show --> Choice{操作}
+    Choice -->|查看個別學員| S1[點選學員列<br/>顯示進度明細：<br/>章節完成度 / 影片觀看時長 / 測驗成績]
+    Choice -->|查看成績分佈| G1[進入成績分佈圖<br/>Moodle 顯示分佈統計]
+    Choice -->|匯出| E1[點擊「匯出 CSV / Excel」]
+    E1 --> E2[Moodle 產出報表檔]
+    S1 --> End([結束])
+    G1 --> End
+    E2 --> End
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+
+    class Start,End startEnd
+    class Show,S1,G1,E1,E2 action
+    class Choice decision
+```
 
 ## 對應 RQ
 

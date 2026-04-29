@@ -16,9 +16,39 @@
 4. **Given** 章節已完成且該章設為強制完成，**When** 學員嘗試進下一章，**Then** Moodle 解鎖下一章
 5. **Given** 章節未完成且該章設為強制完成，**When** 學員嘗試進下一章，**Then** Moodle 鎖定並提示「請先完成本章」
 
-## 流程圖
+## Activity Diagram（UC 內部流程）
 
-![](../../use-cases/et/UCET008-學習課程內容.png)
+```mermaid
+flowchart TD
+    Start([學員進入課程頁]) --> A[Moodle 顯示章節清單<br/>+ 各章完成進度]
+    A --> B{選擇章節}
+    B -->|影片| V1[觀看影片]
+    V1 --> V2[Moodle 即時記錄播放進度]
+    V2 --> Done
+    B -->|引用 DM 文件| D1[點連結]
+    D1 --> D2[Moodle 跳轉 DM 對應文件頁<br/>享 DM 版本管控]
+    D2 --> Done
+    B -->|圖文| T1[閱讀內容]
+    T1 --> Done
+    Done[章節完成] --> Force{該章設為強制完成?}
+    Force -->|是 + 已完成| Unlock[解鎖下一章]
+    Force -->|是 + 未完成| Lock[Moodle 鎖定下一章<br/>提示「請先完成本章」]
+    Force -->|否| Unlock
+    Unlock --> Next{還有下一章?}
+    Next -->|是| B
+    Next -->|否| End([結束 ✓ 完成課程])
+    Lock --> EndKO([結束 - 未完成])
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,End,EndKO startEnd
+    class A,V1,V2,D1,D2,T1,Done,Unlock action
+    class B,Force,Next decision
+    class Lock errorAction
+```
 
 ## 對應 RQ
 

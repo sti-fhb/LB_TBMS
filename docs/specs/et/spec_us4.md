@@ -15,9 +15,27 @@
 3. **Given** 章節 A 設為強制完成才能進 B，**When** 學員未看完 A 之影片即嘗試進 B，**Then** Moodle 鎖定 B 並顯示「請先完成本章」
 4. **Given** 管理者已完成編排，**When** 預覽學員視角，**Then** Moodle 顯示學員實際看到的章節順序與鎖定狀態
 
-## 流程圖
+## Activity Diagram（UC 內部流程）
 
-![](../../use-cases/et/UCET003-編排課程章節與進度條件.png)
+```mermaid
+flowchart TD
+    Start([管理者進入課程編輯頁]) --> A[拖拉章節 / 教材 / 測驗<br/>調整順序]
+    A --> Save1[Moodle 儲存新順序]
+    Save1 --> B{設定強制完成條件?}
+    B -->|是| C[勾選「強制觀看完影片<br/>才能進下一章」]
+    C --> Save2[Moodle 儲存強制條件]
+    B -->|否| Preview
+    Save2 --> Preview[預覽學員視角<br/>驗證章節順序與鎖定狀態]
+    Preview --> End([結束 ✓])
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+
+    class Start,End startEnd
+    class A,Save1,C,Save2,Preview action
+    class B decision
+```
 
 ## 對應 RQ
 

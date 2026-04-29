@@ -15,7 +15,7 @@
 3. **Given** 一個既有課程，**When** 管理者編輯名稱 / 描述 / 分類 / 封面，**Then** Moodle 儲存變更
 4. **Given** 學員角色之使用者，**When** 嘗試開啟課程管理頁，**Then** Moodle 拒絕（依 SS 角色↔功能對應，無「課程管理」權限）
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart TD
@@ -30,8 +30,6 @@ flowchart TD
 
     Deny([學員角色嘗試開啟管理頁]) -.->|SS 角色↔功能對應無權限| Reject[Moodle 拒絕進入]
 ```
-
-> **詳細 Activity Diagram**：見 [UCET001-建立與編輯課程.md](../../use-cases/et/UCET001-建立與編輯課程.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

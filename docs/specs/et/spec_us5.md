@@ -15,9 +15,34 @@
 3. **Given** 學員作答提交，**When** Moodle 自動閱卷，**Then** 系統即時顯示成績與答對 / 答錯明細
 4. **Given** 學員未達及格分數，**When** 管理者已設定允許重考次數，**Then** 學員可依次重考至達上限
 
-## 流程圖
+## Activity Diagram（UC 內部流程）
 
-![](../../use-cases/et/UCET004-建立線上測驗.png)
+```mermaid
+flowchart TD
+    Start([管理者進入章節]) --> A[建立測驗<br/>設定名稱 / 及格分數 /<br/>作答時間 / 重考次數]
+    A --> SaveQ[Moodle 儲存測驗]
+    SaveQ --> B[新增題目<br/>單選 / 多選 + 選項 + 答案 + 配分]
+    B --> SaveItem[Moodle 儲存題目]
+    SaveItem --> More{加更多題?}
+    More -->|是| B
+    More -->|否| Wait[等待學員作答]
+    Wait --> Submit[學員提交]
+    Submit --> Auto[Moodle 自動閱卷]
+    Auto --> Score[即時顯示成績<br/>+ 答對 / 答錯明細]
+    Score --> Pass{達及格?}
+    Pass -->|是| EndOK([結束 ✓])
+    Pass -->|否| Retake{允許重考?}
+    Retake -->|是| Wait
+    Retake -->|否| EndKO([結束 - 未達及格])
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+
+    class Start,EndOK,EndKO startEnd
+    class A,SaveQ,B,SaveItem,Wait,Submit,Auto,Score action
+    class More,Pass,Retake decision
+```
 
 ## 對應 RQ
 

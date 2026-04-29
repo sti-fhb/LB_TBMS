@@ -17,7 +17,7 @@
 4. **Given** DM 端文件被撤回（STATUS=WITHDRAWN），**When** 學員點選引用連結，**Then** DM URL 回 410 Gone（Phase 2 補 webhook 通知 ET 課程）
 5. **Given** 章節同時包含影片、文件、圖文，**When** 管理者使用頁面編輯器（WYSIWYG）製作混合媒材頁面，**Then** Moodle 支援多媒體混排呈現
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart TD
@@ -41,8 +41,6 @@ flowchart TD
 
     DMVer([DM 端文件更版 V1.0 → V2.0]) -.->|無需 ET 介入| D5
 ```
-
-> **詳細 Activity Diagram**：見 [UCET002-上傳教材.md](../../use-cases/et/UCET002-上傳教材.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 
