@@ -15,7 +15,7 @@
 3. **Given** 使用者點選一份文件，**When** 進入文件頁，**Then** DM 顯示文件 metadata（標題、版本、發布日期、作者、變更摘要）+ 內容預覽 / 下載按鈕
 4. **Given** 一份文件含版本歷程，**When** 使用者點選「查看版本歷程」，**Then** DM 顯示完整版本列表（含已撤回版本之歷程紀錄），需具權限方可下載歷史版實體檔
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart TD
@@ -33,8 +33,6 @@ flowchart TD
     Auth -->|否| Deny[拒絕：僅可檢視紀錄]
     History -->|否| End([結束])
 ```
-
-> **詳細 Activity Diagram**：見 [UCDM003-SOP文件查閱.md](../../use-cases/dm/UCDM003-SOP文件查閱.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

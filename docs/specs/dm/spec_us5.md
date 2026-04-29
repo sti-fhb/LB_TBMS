@@ -17,7 +17,7 @@
 5. **Given** DM 端版本切換（V1.0 → V2.0 核准發布），**When** ET 模組課程或主系統下次點同一連結，**Then** 自動指向最新版（無需 ET / 主系統介入）
 6. **Given** 歷史版本目錄被外部 URL 直接存取，**When** 任何來源嘗試，**Then** DM 後端 reject 403；歷史版實體檔案僅能透過 DM 「查看版本歷程」介面下載（驗權限後後端轉發）
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart LR
@@ -43,8 +43,6 @@ flowchart LR
 
     DirectURL[/外部直接訪問<br/>歷史版本目錄/] -.->|被擋| Forbidden[403 Forbidden]
 ```
-
-> **詳細 Activity Diagram**：見 [UCDM002-線上文件查閱.md](../../use-cases/dm/UCDM002-線上文件查閱.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

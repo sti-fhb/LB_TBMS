@@ -17,7 +17,43 @@
 5. **Given** SS 服務暫時不可達，**When** DM 呼叫 APISS001 逾時，**Then** DM 顯示「認證服務暫不可用」並進入只讀模式（公開分類仍可瀏覽，禁止任何寫入）
 6. **Given** 使用期間 DM 後端定期呼叫 APISS002 驗 Token，**When** Token 過期 / 帳號停用 / 密碼變更，**Then** SS 回 401，DM 強制登出並導回登入頁
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([開始]) --> A[使用者開啟 DM URL]
+    A --> B[DM 顯示登入頁<br/>DM03]
+    B --> C[使用者輸入 SS 帳號 / 密碼]
+    C --> D[DM 呼叫 APISS001]
+    D --> E{SS 回應}
+
+    E -->|200 OK| F[Token + functions<br/>寫入 session<br/>HTTP-only cookie]
+    F --> G[寫 DM_AUDIT]
+    G --> H[重導 DM 主頁<br/>觸發 UCDM005]
+    H --> End1([結束 ✓])
+
+    E -->|401<br/>INVALID_CREDENTIAL| I1[顯示「帳號或密碼錯誤」]
+    E -->|403<br/>ACCOUNT_DISABLED<br/>/ ACCOUNT_LOCKED| I2[顯示「帳號暫時無法登入」]
+    E -->|426<br/>PASSWORD_CHANGE| I3[導向 SS 變更密碼頁]
+    E -->|逾時 / SS 不可達| I4[顯示「認證服務暫不可用」<br/>進入只讀模式]
+
+    I1 --> End2([結束 ✗])
+    I2 --> End2
+    I3 --> End2
+    I4 --> End2
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,End1,End2 startEnd
+    class A,B,C,D,F,G,H action
+    class E decision
+    class I1,I2,I3,I4 errorAction
+```
+
+## Sequence Diagram（互動序列）
 
 ```mermaid
 sequenceDiagram
@@ -60,8 +96,6 @@ sequenceDiagram
         end
     end
 ```
-
-> **詳細 Activity Diagram（含 swim lane）**：見 [UCDM004-DM 登入.md](../../use-cases/dm/UCDM004-DM%20登入.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

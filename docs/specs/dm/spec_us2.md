@@ -16,7 +16,7 @@
 4. **Given** session 過期或 Token 失效，**When** APISS002 回 401，**Then** DM 重導登入頁（觸發 UCDM004 重新登入）
 5. **Given** SS 端管理者異動角色↔功能對應，**When** 使用者下一次登入，**Then** DM 主頁依新對應渲染（DM 不快取 functions，每次登入重新取）
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart TD
@@ -31,8 +31,6 @@ flowchart TD
 
     DM_REQ([後續每次後端請求]) -.->|APISS002 回 401| LOGIN[重導登入頁<br/>觸發 UCDM004 重新登入]
 ```
-
-> **詳細 Activity Diagram**：見 [UCDM005-DM 主頁與功能選單載入.md](../../use-cases/dm/UCDM005-DM%20主頁與功能選單載入.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

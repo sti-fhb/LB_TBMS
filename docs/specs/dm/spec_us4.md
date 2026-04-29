@@ -20,7 +20,48 @@
 8. **Given** 任一簽核動作（送審 / 核准 / 退件 / 結案），**When** 完成，**Then** 系統寫入 DM_APPROVAL（動作歷程，append-only）+ DM_AUDIT；跨系統重大事件同步寫 DP_AUDIT_LOG（透過 SRVDP003）
 9. **Given** 一般使用者（非 SOP_REVIEWER），**When** 嘗試核准 / 退件，**Then** 系統拒絕並提示權限不足
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([使用者進入 DM05<br/>具 DM05 功能權限]) --> Create[建立審查單<br/>STATUS=DRAFT]
+    Create --> Add[加入文件明細<br/>任意分類]
+    Add --> More{加更多文件?}
+    More -->|是| Add
+    More -->|否| Submit[送審<br/>STATUS=SUBMITTED]
+    Submit --> Notify[通知具 SOP_REVIEWER 角色之使用者]
+    Notify --> Decision{SOP_REVIEWER 決策}
+
+    Decision -->|核准| Approve[STATUS=APPROVED]
+    Approve --> Move[批次原子搬移<br/>per ticket 內每份文件<br/>見「核准後原子搬移流程」]
+    Move --> Audit1[寫 DM_APPROVAL ACTION=APPROVE<br/>+ DM_AUDIT + DP_AUDIT_LOG]
+    Audit1 --> EndOK([結束 ✓<br/>文件 PUBLISHED])
+
+    Decision -->|退件<br/>填退件原因| Reject[STATUS=REJECTED<br/>所有文件回 DRAFT<br/>待審查檔保留]
+    Reject --> Audit2[寫 DM_APPROVAL ACTION=REJECT<br/>+ DM_AUDIT]
+    Audit2 --> Resubmit{送審者修改後重送?}
+    Resubmit -->|是| Create
+    Resubmit -->|否| Close[結案<br/>STATUS=DELETED]
+    Close --> EndKO([結束 ✗])
+
+    Create -.->|主動結案| Close
+    Submit -.->|主動結案| Close
+    Reject -.->|主動結案| Close
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef approve fill:#e3f2fd,stroke:#1565c0,color:#000
+    classDef reject fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,EndOK,EndKO startEnd
+    class Create,Add,Submit,Notify,Move,Audit1,Audit2,Close action
+    class More,Decision,Resubmit decision
+    class Approve approve
+    class Reject reject
+```
+
+## 流程細節（補充）
 
 ### 審查單狀態機
 
@@ -73,8 +114,6 @@ sequenceDiagram
     DOC-->>B: 該版本已 PUBLISHED → noop
     Note over B: 仍寫 DM_APPROVAL 動作歷程
 ```
-
-> **詳細 Activity Diagram（送審者 / 審查者 swim lane）**：見 [UCDM006-文件審查作業流程.md](../../use-cases/dm/UCDM006-文件審查作業流程.md)（EA 匯出 PNG）
 
 ## 對應 RQ
 

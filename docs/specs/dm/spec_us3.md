@@ -19,7 +19,7 @@
 7. **Given** 影片型訓練教材，**When** 使用者意圖上傳，**Then** DM **不接受**（DM 限文件型；影片走 ET 模組自管，保留 RQET004 強制觀看追蹤）
 8. **Given** 檢核設計：版本號唯一性比對對象包含 STATUS=PUBLISHED / WITHDRAWN，**When** 使用者改版號為某退件版本（REJECTED）的版號，**Then** 允許（退件版本不占用版號）
 
-## 流程圖（Mermaid）
+## Activity Diagram（UC 內部流程）
 
 ```mermaid
 flowchart TD
@@ -44,9 +44,7 @@ flowchart TD
     Param -.-> Cat
 ```
 
-> **詳細 Activity Diagram**：見 [UCDM001-文件管理與版本管控.md](../../use-cases/dm/UCDM001-文件管理與版本管控.md)（EA 匯出 PNG）
->
-> **核准後原子搬移流程** 圖示：見 [spec_us4.md](spec_us4.md) §流程圖
+> **核准後原子搬移流程** 圖示：見 [spec_us4.md](spec_us4.md) §流程細節（補充）
 
 ## 對應 RQ
 
