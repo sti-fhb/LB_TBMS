@@ -2,6 +2,12 @@
 
 > 返回總檔：[spec.md](spec.md) | 模組：標籤列印（LB）
 
+**對應 UseCase**: —（功能作業，無獨立 UC；搭配 [US3 UCLB101](spec_us3.md) 離線/同步機制運作）
+**對應 SRV/API**: APILB003（POST 新增）、APILB004（PATCH 修改）、APILB005（DELETE 硬刪 + cascade）、APILB001/002（查詢）
+**對應 FR**: FR-014 ~ FR-016
+**對應 Table**: `LB_PRINTER`、LBSB01 Local SQLite（`LB_PRINTER` cache + `PENDING_OPS`）
+**優先級**: P1
+
 LBSB01 主機上的操作者（通常為資訊人員或護理站代管者）在 **Menu「設定 → 標籤印表機設定」**子視窗中管理該主機所接的印表機：新增（USB / 固定 IP / 藍牙三種連線方式）、修改（含公差校正參數）、刪除。所有異動一律先寫 Local SQLite Cache + 排 `PENDING_OPS`，上線時經 APILB003（新增）/ APILB004（修改）/ APILB005（刪除）replay 回中央 `LB_PRINTER`。LBSB01 **不直接 Access DB**，連線判定完全依賴 Call APILB 的結果（離線原則，詳見 [US3](spec_us3.md)）。
 
 **Why this priority**: 印表機是列印動作的最後一哩，`LB_PRINTER` 的 `SERVER_IP` / `PRINTER_IP` / `PRINTER_DRIVER` / 公差參數（`SHIFT_LEFT` / `SHIFT_TOP` / `DARKNESS`）直接決定標籤能不能順利印出以及成品品質。印表機設定功能必須在 LBSB01 端（不能在中央統一做），因為只有接印表機的主機才能實測校正。本 Story 同時需支援**離線編輯**：API 不通時也能調校剛換的印表機，上線後自動同步。
@@ -16,7 +22,7 @@ LBSB01 主機上的操作者（通常為資訊人員或護理站代管者）在 
 
 1. **Given** 操作者開啟「標籤印表機設定」子視窗，**When** 視窗載入，**Then** 嘗試 Call APILB001 同步；成功→更新本地快取、顯示清單；失敗→顯示「離線模式」+ 讀本地 Cache（不阻止操作）
 2. **Given** 新增一台**固定 IP** 印表機，**When** 輸入 `PRINTER_IP=192.168.1.50`（`PRINTER_DRIVER` 空白）並儲存，**Then** 寫 Local Cache + 排 `PENDING_OPS(APILB003)`；列印解析優先用 `PRINTER_IP:9100`
-3. **Given** 新增一台 **USB** 印表機，**When** 輸入 `PRINTER_DRIVER=USB`（`PRINTER_IP` 空白），**Then** 保留字 `"USB"` 不經 `LB_PRINTER` 驗證；列印解析走本機 USB Port（`openport("6")`）
+3. **Given** 新增一台 **USB** 印表機，**When** 輸入 `PRINTER_DRIVER=USB`（`PRINTER_IP` 空白），**Then** 該印表機作為一般 `LB_PRINTER` 主檔記錄寫入（與固定 IP / 藍牙印表機相同），由 `PRINTER_DRIVER='USB'` 識別連接類型；列印解析走本機 USB Port（`openport("6")`）
 4. **Given** 新增一台**藍牙**印表機，**When** 輸入 `PRINTER_DRIVER=#GoDEX_BT_01`（`#` 前綴），**Then** 列印解析走 OS 印表機名稱 `OpenDriver("GoDEX_BT_01")`（去掉 `#` 前綴）
 5. **Given** 已存在的印表機，**When** 修改公差參數（SHIFT_LEFT / SHIFT_TOP / DARKNESS）後按測試列印，**Then** 立即以新參數列印測試標籤讓操作者觀察效果（不需先同步中央）
 6. **Given** 離線中新增一台印表機，**When** 操作者儲存，**Then** 該筆寫入本地 `LB_PRINTER_CACHE`（標記「待同步」）；標題列顯示「離線模式」；列印仍可使用該印表機
@@ -80,7 +86,7 @@ flowchart TD
 | # | 連線方式 | 接法 | 解析規則 | DLL 呼叫 |
 |---|---------|------|---------|---------|
 | 1 | **TCP/IP（固定 IP）** | 印表機接 LAN，設定固定 IP | `PRINTER_IP` 有值 → 優先採用 | `OpenNet(ip, 9100)` |
-| 2 | **USB** | 實體 USB 線路 | `PRINTER_DRIVER="USB"`（保留字） | `openport("6")` 或 `OpenUSB(usbID)` |
+| 2 | **USB** | 實體 USB 線路 | `PRINTER_DRIVER="USB"`（欄位值，非 `PRINTER_ID` 保留字） | `openport("6")` 或 `OpenUSB(usbID)` |
 | 3 | **藍牙** | OS 層配對與命名 | `PRINTER_DRIVER` 以 `#` 前綴 | `OpenDriver(name)`（去 `#`） |
 
 **連線解析優先順序**：`PRINTER_IP` 有填 → 優先直連；否則依 `PRINTER_DRIVER`（`USB` / `#XXX`）。

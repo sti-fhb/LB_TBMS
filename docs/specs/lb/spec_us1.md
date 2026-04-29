@@ -2,6 +2,12 @@
 
 > 返回總檔：[spec.md](spec.md) | 模組：標籤列印（LB）
 
+**對應 UseCase**: UCLB001-標籤列印
+**對應 SRV/API**: SRVLB001（主入口）、SRVDP010（印表機解析）、APILB006/APILB007（Log 寫回）
+**對應 FR**: FR-001 ~ FR-006
+**對應 Table**: `LB_PRINT_LOG`、`LB_PRINTER`（讀）、`DP_COMPDEVICE_LABEL`（透過 SRVDP010 讀）
+**優先級**: P1
+
 Client 端模組（BC 採血 / CP 成分 / BS 供應 / TL 檢驗）透過 SRVLB001 觸發標籤列印；中央依傳入的 `bar_type` + Client IP 解析目標印表機（經 SRVDP010），將 Task POST 至對應 LBSB01 的 Listener（`:9200/api/lb/task`）。LBSB01 收到後寫入 Online Queue 本地 SQLite，依 Auto/手動模式消化列印；列印失敗的 Task 自動移入 Offline Queue 供人工介入，不阻塞後續列印。
 
 **Why this priority**: 標籤列印是 LB 模組最核心的功能，所有 Client 模組（BC/CP/BS/TL）都透過本 Story 接入列印能力；Queue 架構與離線/失敗處理為所有後續 Story 的基礎。
@@ -18,7 +24,7 @@ Client 端模組（BC 採血 / CP 成分 / BS 供應 / TL 檢驗）透過 SRVLB0
 3. **Given** LBSB01 Listener 收到 POST Task，**When** `status=0`，**Then** 寫入 local.db 的 Online Queue 並通知 GUI 刷新
 4. **Given** Online Queue 有待印 Task 且 Auto **未勾**，**When** 操作者點選 Task 並按「列印線上指定項目」，**Then** 送至印表機列印；成功則從 Online Queue 移除，失敗自動移入 Offline Queue
 5. **Given** Online Queue 有多筆 Task 且 Auto **已勾**，**When** 系統自動消化，**Then** 依序列印，成功移除、失敗自動移入 Offline Queue，完成後等待下一筆進入
-6. **Given** 區域 A 未勾固定參數，**When** 選取不同 Task，**Then** 紙張規格自動反映該 Task 的標籤類型（寬/高/gap）與指定印表機的公差參數（左位移/上位移/明暗）
+6. **Given** 區域 A 未勾固定參數，**When** 選取不同 Task，**Then** 紙張規格自動反映該 Task 的標籤類型（寬/高，GAP 由程式對照表帶入）與指定印表機的公差參數（左位移/上位移/明暗）
 7. **Given** 勾選「固定參數」CheckBox，**When** 操作者手動調整紙張規格欄位，**Then** 列印時使用畫面上的值而非自動帶入值
 8. **Given** Offline Queue 有 Task 且**滑鼠指向**其中一筆，**When** 即時顯示，**Then** 區域 C 顯示該 Task 明細；可變更指定印表機後按「儲存」
 9. **Given** Offline Queue 中的 Task，**When** 雙擊，**Then** 移回 Online Queue 重新排隊列印
@@ -131,7 +137,7 @@ Online Queue                          Offline Queue
 ## 紙張輸出規格與印表機校正參數
 
 列印時需組合三類參數：
-1. **標籤尺寸** — 依 `bar_type` 查 `LB_TYPE` 取得 `WIDTH / LENGTH / GAP`
+1. **標籤尺寸** — 依 `bar_type` 查 `LB_TYPE` 取得 `WIDTH / LENGTH`；GAP 不存於 LB_TYPE，由 LBSB01 程式內對照表帶入（預設 3 dots，CP19 / TL01 為 2 dots）
 2. **印表機公差** — 依 `PRINTER_ID` 查 `LB_PRINTER` 取得 `SHIFT_LEFT / SHIFT_TOP / DARKNESS`
 3. **固定參數 CheckBox** — 未勾時自動帶入（預設）；勾選時凍結畫面值，操作者手動調整
 

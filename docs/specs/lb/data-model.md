@@ -62,7 +62,7 @@
 
 | # | 欄位名稱 | 欄位代碼 | 資料型別 | 必填 | 說明 |
 |---|----------|----------|----------|------|------|
-| 1 | 印表機編號 | PRINTER_ID | VARCHAR(12) | PK | 唯一不可重複（站點碼+編號） |
+| 1 | 印表機編號 | PRINTER_ID | VARCHAR(20) | PK | 唯一不可重複（建議「站點碼-流水號」格式，如 `S01-PRN-020`） |
 | 2 | 所屬站點 | SITE_ID | VARCHAR(9) | Y | 捐供血站點代碼，FK → DP_SITE（下拉過濾） |
 | 3 | 印表機說明 | PRINTER_NAME | VARCHAR(256) | N | 印表機說明 |
 | 4 | 印表服務器IP | SERVER_IP | VARCHAR(20) | N | Printer Services IP |
@@ -84,7 +84,8 @@
 | 20 | 異動時間 | UPDATED_DATE | TIMESTAMP | N | |
 | 21 | 異動站點 | UPDATED_SITE | VARCHAR(10) | N | |
 | 22 | 來源功能 ID | RES_ID | VARCHAR(30) | N | |
-| 23 | 刪除標記 | DELETED | INT | N | 預設 0（0=正常, 1=已刪除） |
+
+> **LB_PRINTER 為硬刪除例外表**（同 `DP_SCHEDULE` / `DP_COMPDEVICE`，見 `.claude/rules/sti-backend-modules.md`）。**不含 `DELETED` 欄位**；APILB005 直接 `DELETE FROM LB_PRINTER ...` + cascade `DP_COMPDEVICE_LABEL` 子表。理由：印表機代表實體設備，刪除代表設備已下線/移除，不需保留歷史；列印稽核由 `LB_PRINT_LOG.PRINTER_ID` 文字值保留（JOIN 後 printer_name 可能為空，可接受）；避免軟刪造成 PRINTER_ID UNIQUE 衝突。
 
 ---
 
@@ -158,3 +159,13 @@ erDiagram
 | LB_PRINTER → LB_PRINT_LOG | 1:N | 一台印表機可產出多筆列印記錄（透過 PRINTER_ID） |
 | DP_SITE → LB_PRINTER | 1:N | 一個站點可有多台印表機（透過 SITE_ID） |
 | DP_SITE → LB_PRINT_LOG | 1:N | 一個站點可有多筆列印記錄（透過 SITE_ID） |
+
+### 設計註記
+
+- **LB_PRINTER 為硬刪除例外表**（同 `DP_SCHEDULE` / `DP_COMPDEVICE`，見 `.claude/rules/sti-backend-modules.md`）。**Schema 不含 `DELETED` 欄位**；APILB005 直接 `DELETE FROM LB_PRINTER` + cascade 清 `DP_COMPDEVICE_LABEL` 子表；列印稽核由 `LB_PRINT_LOG.PRINTER_ID` 文字值保留（FK 仍存在但允許指向已刪除的 `PRINTER_ID`，JOIN 後 `printer_name` 可能為空，可接受）。
+- **PRINTER_ID 無保留字**：每筆 `LB_PRINTER` 皆為實體印表機真實記錄，**包含本機 USB 直連的印表機**。USB 連接性由欄位 `PRINTER_DRIVER` 表達：
+  - `PRINTER_DRIVER = 'USB'` → 該印表機透過本機 USB 直連，列印走 USB Port（`openport("6")`）
+  - `PRINTER_DRIVER = '#XXX'` → Windows / OS 印表機名（網路印表機）
+  - `PRINTER_IP` 有填則優先使用（Port 固定 9100）
+- 因此 `DP_COMPDEVICE_LABEL.PRINTER_ID` FK 永遠指向實際存在的 `LB_PRINTER` 記錄，無 sentinel value 的設計矛盾。
+- **LB_PRINT_LOG 為一般軟刪除表**（保留 `DELETED` 欄位作為稽核保險）。
