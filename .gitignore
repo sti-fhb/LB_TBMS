@@ -21,3 +21,4 @@ app.log
 # Claude Code 個人/執行期檔案
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.mcp.json
