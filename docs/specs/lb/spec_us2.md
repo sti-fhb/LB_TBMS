@@ -12,7 +12,7 @@
 - `printer_id` 傳入中央查無的值 → 回 MSG「指定印表機不存在」
 - `log_uuid` 傳入中央查無的值 → 回 MSG「原列印紀錄不存在」
 
-**Acceptance Scenarios**:
+## Acceptance Scenarios
 
 1. **Given** 操作者開啟「歷史標籤查詢」畫面，**When** 輸入日期範圍（date_from、date_to）與 site_id，**Then** SRVLB012 回傳符合條件的分頁清單（依 CREATED_DATE DESC 排序）
 2. **Given** 僅輸入 `specimen_no`，**When** 查詢，**Then** 回傳該檢體號的所有列印紀錄（跨日期、跨印表機）
@@ -27,19 +27,48 @@
 7. **Given** 補印後的新紀錄，**When** 該印表機離線或故障，**Then** 行為與一般列印相同（Task 自動移入 Offline Queue）
 8. **Given** 補印紀錄的 RES_ID 指向原 UUID，**When** 稽核檢視，**Then** 可沿 `RES_ID` 追溯原列印紀錄與補印序列
 
----
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([操作者開啟 LBSR01 歷史標籤查詢]) --> A[輸入查詢條件<br/>日期 / 站點 / 印表機 /<br/>bar_type / 檢體號]
+    A --> B{至少一項條件?}
+    B -->|否| ERR1[SRVLB012 回 400<br/>「至少一項查詢條件」]
+    ERR1 --> EndKO1([結束 ✗])
+    B -->|是| C[SRVLB012 查 LB_PRINT_LOG<br/>分頁回傳，依 CREATED_DATE DESC]
+    C --> D[操作者選取一筆<br/>UUID=X]
+    D --> E[選擇印表機 P2<br/>可與原 P1 不同]
+    E --> F[按「補印」<br/>呼叫 SRVLB001 格式二<br/>printer_id=P2, log_uuid=X]
+    F --> G{中央處理}
+    G -->|UUID 不存在| ERR2[回「原列印紀錄不存在」]
+    G -->|印表機不存在| ERR3[回「指定印表機不存在」]
+    G -->|OK| H[讀 LB_PRINT_LOG WHERE UUID=X<br/>取回原 BAR_TYPE + data_*]
+    H --> I[讀 LB_PRINTER WHERE PRINTER_ID=P2<br/>取 SERVER_IP + 參數]
+    I --> J[新增一筆 LB_PRINT_LOG<br/>新 UUID，RES_ID=X，STATUS=0]
+    J --> K[POST Task 至 P2 對應的 LBSB01]
+    K --> EndOK([結束 ✓<br/>新紀錄獨立、原紀錄不變])
+    ERR2 --> EndKO2([結束 ✗])
+    ERR3 --> EndKO2
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,EndOK,EndKO1,EndKO2 startEnd
+    class A,C,D,E,F,H,I,J,K action
+    class B,G decision
+    class ERR1,ERR2,ERR3 errorAction
+```
 
 ## 關聯 UseCase 與 API
 
 | 項目 | 說明 |
 |------|------|
 | UseCase | UCLB002 — 標籤列印紀錄查詢及補印標籤 |
-| Activity 圖 | [UCLB002-標籤列印紀錄查詢及補印標籤.png](../../use-cases/lb/UCLB002-標籤列印紀錄查詢及補印標籤.png) |
 | 中央 SRV（查詢）| [SRVLB012](./contracts/SRVLB012.md)（標籤列印紀錄查詢） |
 | 中央 SRV（補印）| [SRVLB001](./contracts/SRVLB001.md) 格式二（`printer_id` + `log_uuid`） |
 | 中央 API | [APILB007](./contracts/APILB007.md)（進件寫 LOG，補印亦經此寫新紀錄） |
-
-![UCLB002-標籤列印紀錄查詢及補印標籤](../../use-cases/lb/UCLB002-標籤列印紀錄查詢及補印標籤.png)
 
 ## 查詢條件
 

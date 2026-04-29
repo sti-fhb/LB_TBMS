@@ -17,7 +17,7 @@
 - 測試頁列印後 `LB_PRINT_LOG` 有記錄，`bar_type` / `printer_id` 對應操作者選擇
 - 斷網中進行測試列印（走本機 `localhost:9200`）→ 仍可列印成功
 
-**Acceptance Scenarios**:
+## Acceptance Scenarios
 
 1. **Given** 操作者於主畫面「列印測試資料」輸入預設測試文字，**When** 按「列印」按鈕，**Then** LBSB01 依當前紙張輸出規格區的值（標籤/尺寸/位移/明暗）組 EZPL，送至當前指定的印表機
 2. **Given** 測試文字開頭為 `\F##;`，**When** 解析，**Then** 取出字型大小（預設 60）並移除前綴；字高設為該值
@@ -30,7 +30,39 @@
 9. **Given** LBSB01 離線，**When** 於測試頁列印，**Then** 本機列印流程（`localhost:9200`）不受離線影響仍可執行；列印完成事件依離線原則先寫 Local、上線後 replay
 10. **Given** 列印格式控制碼無效（如 `\F999;` 超出範圍），**When** 解析，**Then** 系統套用合理上限（如字高上限 200）或提示錯誤，不造成印表機當機
 
----
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([操作者]) --> Way{入口}
+    Way -->|主畫面 列印測試資料| TextIn[輸入測試文字<br/>支援 \F##; / \n]
+    Way -->|Menu 標籤測試頁| Sub[載入子視窗<br/>選 LB_TYPE / 紙張尺寸 /<br/>輸入血袋編號]
+
+    TextIn --> Parse[解析文字<br/>取出字型大小、拆分多行]
+    Sub --> Sample[帶出對應樣本資料<br/>sample_data.py]
+    Sample --> Build[組 EZPL 顯示於預覽區]
+
+    Parse --> Spec[取列印參數：<br/>紙張寬高 / 位移 / 明暗 /<br/>連線方式]
+    Build --> Spec
+
+    Spec --> Print[經 localhost:9200/api/lb/task<br/>進 Online Queue]
+    Print --> Log[APILB007 寫 LB_PRINT_LOG<br/>bar_type / printer_id /<br/>status=0 或 2 視使用者選擇]
+    Log --> Result{列印結果}
+    Result -->|成功| OK[APILB006 回報 STATUS=1]
+    Result -->|失敗| Fail[移入 Offline Queue 不阻塞<br/>離線時依離線原則先寫 Local]
+    OK --> EndOK([結束 ✓])
+    Fail --> EndKO([結束 - 失敗])
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,EndOK,EndKO startEnd
+    class TextIn,Sub,Parse,Sample,Build,Spec,Print,Log,OK action
+    class Way,Result decision
+    class Fail errorAction
+```
 
 ## 相關功能
 

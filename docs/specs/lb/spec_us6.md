@@ -14,7 +14,7 @@
 - 管理員刪除 `PRN-020`（APILB005）→ 後端 cascade 清 `DP_COMPDEVICE_LABEL` 中 `PRINTER_ID=PRN-020` 的記錄 → 原對應的工作站再發 SRVLB001 格式一 → SRVDP010 回 404 → SRVLB001 回「資訊設備需先設定」
 - 同時發生 LBSB01 端離線修改 + 中央修改同一 PRINTER_ID → 上線 replay → 採「以 Local 蓋中央」（見 [US3](spec_us3.md) 離線原則）
 
-**Acceptance Scenarios**:
+## Acceptance Scenarios
 
 1. **Given** 中央管理員於管理 UI 按「新增印表機」，**When** 輸入必填欄位（`PRINTER_ID`、`PRINTER_NAME`、`SITE_ID`、`SERVER_IP`）並儲存，**Then** 呼叫 [APILB003](./contracts/APILB003.md) 新增一筆 `LB_PRINTER`
 2. **Given** 已存在的印表機，**When** 管理員修改 `SHIFT_LEFT` / `IS_ACTIVE` 等欄位，**Then** 呼叫 [APILB004](./contracts/APILB004.md) PATCH 更新
@@ -29,7 +29,45 @@
 9. **Given** 中央刪除某 `PRINTER_ID`（硬刪），**When** 該印表機對應的工作站再發格式一請求，**Then** SRVDP010 回 404，SRVLB001 回「資訊設備需先設定」
 10. **Given** 非管理員的 LBSB01 使用者，**When** 於 LBSB01 端新增/修改/刪除印表機（[US4](spec_us4.md)），**Then** 同樣經 APILB003/004/005 寫入中央，**不需經過**中央管理員的 UI；管理員 UI 與 LBSB01 UI 共用同一組 API
 
----
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([中央管理員開啟管理 UI]) --> Op{操作}
+
+    Op -->|新增| New[輸入 PRINTER_ID, NAME,<br/>SITE_ID, SERVER_IP 等]
+    Op -->|查詢清單| List[篩選 SITE_ID / IS_ACTIVE 等]
+    Op -->|修改| Edit[改 SHIFT_LEFT / IS_ACTIVE 等]
+    Op -->|刪除| Del[選定 PRINTER_ID]
+    Op -->|對應表| Map[設定 DP_COMPDEVICE_LABEL<br/>CLIENT_IP + BAR_TYPE → PRINTER_ID]
+
+    New --> A1[呼叫 APILB003 POST<br/>新增 LB_PRINTER]
+    List --> A2[呼叫 APILB001 GET<br/>取得清單]
+    Edit --> A3[呼叫 APILB004 PATCH<br/>更新部分欄位]
+    Del --> A4[呼叫 APILB005 DELETE]
+    Map --> A5[DP_COMPDEVICE_LABEL<br/>新增 / 更新]
+
+    A4 --> Trans[Transaction：<br/>1. cascade DELETE<br/>   DP_COMPDEVICE_LABEL<br/>   WHERE PRINTER_ID=X<br/>2. DELETE LB_PRINTER<br/>   WHERE PRINTER_ID=X]
+
+    A1 --> Sync[LBSB01 下次 Call APILB001<br/>取得新清單覆蓋本地]
+    A2 --> Show[UI 顯示結果]
+    A3 --> Sync
+    Trans --> SyncDel[LBSB01 同步後本地清單移除]
+    A5 --> SRV[後續 SRVDP010<br/>依此對應解析印表機]
+
+    Sync --> EndOK([結束 ✓])
+    Show --> EndOK
+    SyncDel --> EndOK
+    SRV --> EndOK
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+
+    class Start,EndOK startEnd
+    class New,List,Edit,Del,Map,A1,A2,A3,A4,A5,Trans,Sync,Show,SyncDel,SRV action
+    class Op decision
+```
 
 ## 關聯 API 契約
 

@@ -12,7 +12,7 @@ LBSB01 主機上的操作者（通常為資訊人員或護理站代管者）在 
 - 離線中修改 SHIFT_LEFT → Local Cache 立即反映、畫面顯示「離線模式」、PENDING_OPS 有一筆 UPDATE；上線後 replay → 中央 LB_PRINTER 同步
 - 刪除印表機 → 本地 Cache 立即消失 → 上線 replay APILB005（硬刪 + cascade 清 DP_COMPDEVICE_LABEL 子表對應）
 
-**Acceptance Scenarios**:
+## Acceptance Scenarios
 
 1. **Given** 操作者開啟「標籤印表機設定」子視窗，**When** 視窗載入，**Then** 嘗試 Call APILB001 同步；成功→更新本地快取、顯示清單；失敗→顯示「離線模式」+ 讀本地 Cache（不阻止操作）
 2. **Given** 新增一台**固定 IP** 印表機，**When** 輸入 `PRINTER_IP=192.168.1.50`（`PRINTER_DRIVER` 空白）並儲存，**Then** 寫 Local Cache + 排 `PENDING_OPS(APILB003)`；列印解析優先用 `PRINTER_IP:9100`
@@ -25,7 +25,45 @@ LBSB01 主機上的操作者（通常為資訊人員或護理站代管者）在 
 9. **Given** 刪除一台印表機，**When** 上線 replay `DELETE LB_PRINTER` 呼叫 APILB005，**Then** 後端在 Transaction 內 cascade 清 `DP_COMPDEVICE_LABEL` 子表對應後硬刪 `LB_PRINTER`（不再經 SRVDP020，該 SRV 已於 2026-04-22 廢除）
 10. **Given** LBSB01 啟動，**When** 初始化印表機清單，**Then** Call APILB001 取得中央清單並覆蓋本地 Cache；API 不通時延用最後一次成功同步的 Cache
 
----
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([開啟「標籤印表機設定」子視窗]) --> Sync[嘗試 Call APILB001 同步]
+    Sync --> Result{結果}
+    Result -->|成功| Update[更新本地快取<br/>顯示清單]
+    Result -->|失敗| Off[顯示「離線模式」<br/>讀本地 Cache 顯示]
+    Update --> Op{操作}
+    Off --> Op
+    Op -->|新增| New[輸入新印表機資料<br/>USB / 固定 IP / 藍牙]
+    Op -->|修改| Edit[改公差 / 連線等]
+    Op -->|刪除| Del[選定 PRINTER_ID]
+    Op -->|測試列印| Test[依當前參數立即列印測試標籤]
+    New --> Save[寫 Local Cache 標記「待同步」<br/>排 PENDING_OPS APILB003]
+    Edit --> Save2[寫 Local Cache 標記「待同步」<br/>排 PENDING_OPS APILB004]
+    Del --> Save3[寫 Local Cache 標記「待同步」<br/>排 PENDING_OPS APILB005]
+    Test --> EndTest([結束 ✓ 測試完成])
+    Save --> Online{已連線?}
+    Save2 --> Online
+    Save3 --> Online
+    Online -->|是| Replay[Background Thread<br/>依 SEQ replay PENDING_OPS]
+    Online -->|否| Wait[等待上線]
+    Replay --> Conflict{中央有衝突?}
+    Conflict -->|是| LocalWin[一律以 Local 蓋中央<br/>離線原則 R03]
+    Conflict -->|否| OK[同步成功<br/>清「待同步」標記]
+    LocalWin --> EndOK([結束 ✓])
+    OK --> EndOK
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start,EndOK,EndTest startEnd
+    class Sync,Update,New,Edit,Del,Test,Save,Save2,Save3,Replay,LocalWin,OK,Wait action
+    class Result,Op,Online,Conflict decision
+    class Off errorAction
+```
 
 ## 關聯 API 契約
 

@@ -12,7 +12,7 @@ LBSB01 程式的內部運作模型：啟動時處理未同步資料、常駐 Tas
 - 離線中對本地做的任何異動（印表機資料、列印狀態、測試頁列印）→ 寫 Local DB + 排 PENDING_OPS → 恢復連線後依 SEQ 順序 replay 回中央
 - 模擬斷電 LBSB01：重啟後應自動處理 `PENDING_OPS` 內所有待同步項目
 
-**Acceptance Scenarios**:
+## Acceptance Scenarios
 
 1. **Given** LBSB01 啟動，**When** 偵測 `PENDING_OPS` 有資料，**Then** 先嘗試補送未同步項目（以 SEQ 順序 replay 至 APILB006/007），成功者移除該筆
 2. **Given** LBSB01 常駐 Task Listener（port 9200），**When** 收到中央 POST `/api/lb/task`，**Then** 驗證 Bearer Token、寫入 local.db（依 status 放 Online Queue 或 Offline Queue）、通知 GUI 刷新
@@ -25,19 +25,56 @@ LBSB01 程式的內部運作模型：啟動時處理未同步資料、常駐 Tas
 9. **Given** 離線時產生的列印成功事件，**When** 同步到中央後，**Then** 中央 `LB_PRINT_LOG.STATUS` 由 0 → 1，`RESULT` 依 `local_db.build_result()` 格式寫入（如 `v1.1r1-W80H35L40T0D8`）
 10. **Given** Online/Offline Queue 都持久化於 local.db（SQLite），**When** LBSB01 斷電重啟，**Then** Queue 內容完整還原，列印不中斷
 
----
+## Activity Diagram（UC 內部流程）
+
+```mermaid
+flowchart TD
+    Start([LBSB01 啟動]) --> Init[初始化]
+    Init --> CheckPending{PENDING_OPS<br/>有資料?}
+    CheckPending -->|是| Replay[依 SEQ 順序 replay<br/>呼叫 APILB006/007]
+    Replay --> Listen
+    CheckPending -->|否| Listen[啟動常駐 Task Listener<br/>:9200/api/lb/task]
+    Listen --> Wait{事件}
+
+    Wait -->|收到 POST Task| RecTask[驗證 Bearer Token<br/>寫 local.db<br/>通知 GUI 刷新]
+    Wait -->|列印完成| UpdLog[更新 LB_PRINT_LOG<br/>STATUS=1, RESULT=...]
+    Wait -->|印表機故障| Move[Task 移入 Offline Queue<br/>STATUS=2]
+    Wait -->|Call API 失敗| Offline[切「離線」紅燈<br/>啟動 Retry Timer 3 分]
+
+    RecTask --> WriteLog[排 PENDING_OPS<br/>背景 Thread Call APILB007]
+    UpdLog --> WriteLog2[排 PENDING_OPS<br/>背景 Thread Call APILB006]
+    Move --> WriteLog3[排 PENDING_OPS<br/>Call APILB006 status=2]
+
+    Offline --> Timer{Timer 到 / 使用者按 [更新]?}
+    Timer -->|是| Sync[執行同步<br/>replay PENDING_OPS]
+    Sync --> SyncResult{Call API 成功?}
+    SyncResult -->|是| Online[切回「線上」綠燈靜默<br/>停止 Timer]
+    SyncResult -->|否| Offline
+
+    WriteLog --> Wait
+    WriteLog2 --> Wait
+    WriteLog3 --> Wait
+    Online --> Wait
+
+    classDef startEnd fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef action fill:#fff,stroke:#666,color:#000
+    classDef decision fill:#fff8e1,stroke:#f57c00,color:#000
+    classDef errorAction fill:#ffebee,stroke:#c62828,color:#000
+
+    class Start startEnd
+    class Init,Replay,Listen,RecTask,UpdLog,Move,WriteLog,WriteLog2,WriteLog3,Sync,Online action
+    class CheckPending,Wait,Timer,SyncResult decision
+    class Offline errorAction
+```
 
 ## 關聯 UseCase 與 API
 
 | 項目 | 說明 |
 |------|------|
 | UseCase | UCLB101 — LBSB01 內部功能流程 |
-| Activity 圖 | [UCLB101-LBSB01內部功能流程.png](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png) |
 | 對外 API（狀態回報）| [APILB006](./contracts/APILB006.md)（回報列印事件），[APILB007](./contracts/APILB007.md)（進件寫 LOG） |
 | 中央入口 | 收 Task：LBSB01 Listener `:9200/api/lb/task`（由中央 SRVLB001 POST 進來） |
 | EA Rule | 「離線原則」GUID `{2B94E1A9-8051-4083-BA45-80732128CA0C}` |
-
-![UCLB101-LBSB01 內部功能流程](../../use-cases/lb/UCLB101-LBSB01內部功能流程.png)
 
 ## 三層 Queue 架構
 
