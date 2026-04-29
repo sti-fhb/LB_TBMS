@@ -2,6 +2,12 @@
 
 > 返回總檔：[spec.md](spec.md) | 模組：標籤列印（LB）
 
+**對應 UseCase**: —（功能作業，無獨立 UC；共用 UCLB001 列印路徑）
+**對應 SRV/API**: 走 LBSB01 Listener `localhost:9200/api/lb/task`（本機迴路）；行為等同中央 SRVLB001 派送，經 APILB006/007 回寫 Log
+**對應 FR**: FR-017 ~ FR-018
+**對應 Table**: `LB_PRINT_LOG`（含 `status=2` 離線區標記，避免干擾真實佇列）
+**優先級**: P2
+
 操作者（通常為資訊人員或護理師）於 LBSB01 主畫面 **「列印測試資料」** 區、或 Menu 開啟的 **「標籤測試頁」** 子視窗，快速驗證：
 1. 印表機是否能正常驅動（連線 / USB / 藍牙 / 固定 IP）
 2. 目前公差校正參數（左位移 / 上位移 / 明暗）是否合適
@@ -26,7 +32,7 @@
 5. **Given** 選擇 LB_TYPE=CP11（血品核對標籤-合格），**When** 輸入血袋編號，**Then** 系統帶出對應樣本資料（`sample_data.py`），組 EZPL 顯示於預覽區
 6. **Given** 預覽 EZPL 無誤，**When** 按「列印」，**Then** 透過 `localhost:9200/api/lb/task` 進 Online Queue 執行列印，行為與外部 API 送入相同（走 APILB007 進件 + APILB006 狀態回報）
 7. **Given** 測試頁列印 Task，**When** 寫 LB_PRINT_LOG，**Then** `bar_type` 對應選擇的 LB_TYPE，`printer_id` 為當前指定印表機，`status` 依使用者選擇可為 0（Online Queue）或 2（Offline Queue 測試用）
-8. **Given** 選擇 **USB 直連**的印表機（保留字 `PRINTER_ID="USB"`），**When** 測試列印，**Then** APILB007 跳過 LB_PRINTER 驗證；列印走本機 USB Port
+8. **Given** 選擇 **USB 直連**的印表機（`LB_PRINTER` 內 `PRINTER_DRIVER='USB'` 的記錄），**When** 測試列印，**Then** APILB007 一般驗證 `printer_id` 存在於 `LB_PRINTER`；列印走本機 USB Port（依 `PRINTER_DRIVER='USB'` 判斷）
 9. **Given** LBSB01 離線，**When** 於測試頁列印，**Then** 本機列印流程（`localhost:9200`）不受離線影響仍可執行；列印完成事件依離線原則先寫 Local、上線後 replay
 10. **Given** 列印格式控制碼無效（如 `\F999;` 超出範圍），**When** 解析，**Then** 系統套用合理上限（如字高上限 200）或提示錯誤，不造成印表機當機
 
@@ -86,8 +92,9 @@ flowchart TD
    └─ 以 \n 拆分成多行
 
 2. 取得列印參數
-   ├─ 紙張寬/高/gap：從「紙張輸出規格」區取得
-   ├─ 左位移/上位移/明暗：同上（自印表機設定檔帶入或手動）
+   ├─ 紙張寬/高：從「紙張輸出規格」區取得（對應 LB_TYPE 的 WIDTH / LENGTH）
+   ├─ gap：LBSB01 程式內 LB_TYPE 對照表（預設 3 dots，CP19 / TL01 為 2 dots），不開放使用者調整
+   ├─ 左位移/上位移/明暗：自印表機設定檔（LB_PRINTER）帶入或手動
    └─ 連線方式/IP/Port：從當前指定印表機取得
 
 3. 開啟印表機連線（TCP/USB/BT 依 PRINTER_DRIVER/PRINTER_IP 判斷）

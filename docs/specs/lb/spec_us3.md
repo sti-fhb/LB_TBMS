@@ -2,7 +2,13 @@
 
 > 返回總檔：[spec.md](spec.md) | 模組：標籤列印（LB）
 
-LBSB01 程式的內部運作模型：啟動時處理未同步資料、常駐 Task Listener 接收中央派送、以 Retry Timer 補同步（離線偵測）、將狀態變更事件 append-only 地回寫中央（APILB006/007）。所有「離線行為」集中由 **EA Rule 「離線原則」**（GUID `{2B94E1A9-8051-4083-BA45-80732128CA0C}`）定義，詳見總檔 [§離線原則](spec.md#離線原則r03)。
+**對應 UseCase**: UCLB101-LBSB01 內部功能流程
+**對應 SRV/API**: APILB006（事件 UPDATE）、APILB007（事件 INSERT）、APILB001~005（印表機同步）
+**對應 FR**: FR-010 ~ FR-013（並貫穿 [§離線原則（R03）](spec.md#離線原則r03)）
+**對應 Table**: `LB_PRINT_LOG`（append-only 寫入）、LBSB01 Local SQLite（`ONLINE_QUEUE` / `OFFLINE_QUEUE` / `PENDING_OPS`）
+**優先級**: P1
+
+LBSB01 程式的內部運作模型：啟動時處理未同步資料、常駐 Task Listener 接收中央派送、以 Retry Timer 補同步（離線偵測）、將狀態變更事件 append-only 地回寫中央（APILB006/007）。所有「離線行為」集中於總檔 [§離線原則](spec.md#離線原則r03)（R03）定義。
 
 **Why this priority**: Client 列印（[US1](spec_us1.md)）與歷史補印（[US2](spec_us2.md)）成功的前提，是 LBSB01 能在斷網、LBSB01 重啟、印表機故障等任何失常情境下仍**不遺失任何指令或狀態**。本 Story 規範 LBSB01 端的持久化與恢復行為，是整個 LB 模組可靠性的骨幹。
 
@@ -74,7 +80,7 @@ flowchart TD
 | UseCase | UCLB101 — LBSB01 內部功能流程 |
 | 對外 API（狀態回報）| [APILB006](./contracts/APILB006.md)（回報列印事件），[APILB007](./contracts/APILB007.md)（進件寫 LOG） |
 | 中央入口 | 收 Task：LBSB01 Listener `:9200/api/lb/task`（由中央 SRVLB001 POST 進來） |
-| EA Rule | 「離線原則」GUID `{2B94E1A9-8051-4083-BA45-80732128CA0C}` |
+| 離線規則 | 詳見 [§離線原則 R03](spec.md#離線原則r03) |
 
 ## 三層 Queue 架構
 

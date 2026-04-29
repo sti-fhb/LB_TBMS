@@ -119,7 +119,7 @@ Authorization: Bearer <你的模組 TOKEN>
      │    message: "OK" }  │                    │                  │                │
 ```
 
-> 完整 SRVLB001 處理流程見 `contracts/SRVLB001.md` §SRVLB001；內部步驟參考 [UCLB001](../../use-cases/lb/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
+> 完整 SRVLB001 處理流程見 `contracts/SRVLB001.md` §SRVLB001；內部步驟參考 [UCLB001](usecase/UCLB001-標籤列印使用案例.png)（Activity 圖）與 [SRVLB001 架構圖](contracts/SRVLB001-標籤列印通用API.png)（CompositeStructure）。
 
 ---
 
@@ -134,7 +134,9 @@ Authorization: Bearer <你的模組 TOKEN>
 | `CP19` | 血品核對標籤-不適輸用 | CP 成分 | 80×75mm | 不合格血品標識 |
 | `TL01` | 檢驗檢體標籤 | TL 檢驗 | 45×15mm | 檢驗用檢體標籤 |
 
-### 4.2 規劃中（停用，待需求確認）
+### 4.2 歷史代碼（已停用，僅供參考）
+
+> **2026-04-29 更新（PR #397）**：以下 12 條歷史代碼已從 LB_TYPE 代碼表（`DP_PARAM_D`）移除，實際啟用僅 §4.1 的 4 條（TL01 / CP01 / CP11 / CP19）。本表保留為歷史紀錄。
 
 | bar_type | 名稱 | 群組 | 紙張尺寸 |
 |----------|------|------|---------|
@@ -151,7 +153,7 @@ Authorization: Bearer <你的模組 TOKEN>
 | `BS05` | 供應特殊血品標籤 | BS | 80×75mm |
 | `BS07` | 血品裝箱小標籤 | BS | 80×35mm |
 
-> 需要啟用新的 bar_type 時，請聯繫 LB 模組負責人新增標籤定義。
+> 需要啟用新的 bar_type 時，請聯繫 LB 模組負責人新增標籤定義並更新 LB_TYPE 代碼表 seed。
 
 ---
 
@@ -161,7 +163,7 @@ Authorization: Bearer <你的模組 TOKEN>
 
 ### CP01 — 血品小標籤
 
-> **2026-04-17 變更（[ISLB003](../../../issue/ISLB003-CP01-移除-data-4-6-8-11.md)）**：CP01 不再列印 `data_4` / `data_6` / `data_8` / `data_11`。Client 可繼續傳（向下相容），但不會出現在標籤上。
+> **2026-04-17 變更（ISLB003）**：CP01 不再列印 `data_4` / `data_6` / `data_8` / `data_11`。Client 可繼續傳（向下相容），但不會出現在標籤上。
 
 | 欄位 | 用途 | 範例 |
 |------|------|------|
@@ -175,7 +177,7 @@ Authorization: Bearer <你的模組 TOKEN>
 
 ### CP11 — 血品核對標籤-合格
 
-> **2026-04-17 變更（[ISLB002](../../../issue/ISLB002-CP11-移除-data-8-13-14-15.md)）**：CP11 不再列印 `data_8` / `data_13` / `data_14` / `data_15`。Client 可繼續傳這些欄位（向下相容），但不會出現在標籤上。
+> **2026-04-17 變更（ISLB002）**：CP11 不再列印 `data_8` / `data_13` / `data_14` / `data_15`。Client 可繼續傳這些欄位（向下相容），但不會出現在標籤上。
 
 | 欄位 | 用途 | 範例 |
 |------|------|------|
@@ -195,7 +197,7 @@ Authorization: Bearer <你的模組 TOKEN>
 
 ### CP19 — 血品核對標籤-不適輸用
 
-> **2026-04-17 變更（[ISLB002](../../../issue/ISLB002-CP11-移除-data-8-13-14-15.md)）**：CP19 不再列印 `data_13`。Client 可繼續傳（向下相容），但不會出現在標籤上。
+> **2026-04-17 變更（ISLB002）**：CP19 不再列印 `data_13`。Client 可繼續傳（向下相容），但不會出現在標籤上。
 
 | 欄位 | 用途 | 範例 |
 |------|------|------|
